@@ -111,6 +111,7 @@ public:
 		/* Set GPIO13 (in GPIO port C) to 'output push-pull'. */
 		gpio_set_mode(LED_PORT, GPIO_MODE_OUTPUT_2_MHZ,
 		GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
+		gpio_clear(LED_PORT, LED_PIN);
 		timeout(100);
 	}
 
@@ -155,6 +156,7 @@ int main(void) {
 	usb_init();
 
 	gpio_setup();
+	gpio_set(GPIOC,GPIO13);
 
 	Sys::hostname("STM32F103");
 	/* 72MHz / 8 => 9000000 counts per second */
@@ -171,6 +173,8 @@ int main(void) {
 
 	/* Start counting. */
 	systick_counter_enable();
+
+	usart1.init();
 
 	usart_send_string(" first ..................... second ");
 
