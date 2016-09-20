@@ -139,6 +139,8 @@ public:
 		/* Set GPIO13 (in GPIO port C) to 'output push-pull'. */
 		gpio_set_mode(LED_PORT, GPIO_MODE_OUTPUT_2_MHZ,
 		GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
+		gpio_set(LED_PORT,LED_PIN);
+
 		timeout(100);
 	}
 
@@ -156,34 +158,22 @@ public:
 	}
 
 	void blinkFast(Header h) {
-		LOGF("");
-		_interval = 500;
+		(void)h;
+		_interval = 100;
 	}
 
 	void blinkSlow(Header h) {
-		LOGF("");
-		_interval = 2000;
+		(void)h;
+		_interval = 500;
 	}
 };
 
 Led led;
 #include <Usart.h>
 
-uint32_t one=1;
-uint32_t two=2;
-
-int main(void) {
-	clock_setup();
-	gpio_setup();
-	usart_setup();
-
-	one++;
-	Sys::hostname("STM32F103");
-	/* 72MHz / 8 => 9000000 counts per second */
+static void systick_setup(void) {
+	/* 72MHz / 8 => 9000000 counts per second. */
 	systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8);
-
-	Log.setOutput(usartLog);
-	LOGF(" ready to log ?");
 
 	/* 9000000/9000 = 1000 overflows per second - every 1ms one interrupt */
 	/* SysTick interrupt every N clock pulses: set reload to N-1 */
@@ -193,18 +183,30 @@ int main(void) {
 
 	/* Start counting. */
 	systick_counter_enable();
+}
+
+int main(void) {
+	led.init();
+	clock_setup();
+//	gpio_setup();
+	usart_setup();
+	systick_setup();
+
+	Sys::hostname("STM32F103");
+
+	Log.setOutput(usartLog);
 
 	/* Blink the LED (PC12) on the board with every transmitted byte. */
 
-	gpio_clear(LED_PORT,LED_PIN);
 
 	Actor::initAll();
 
 	while (1) {
 //		gpio_toggle(LED_PORT, LED_PIN); /* LED on/off */
 		LOGF("The quick brown fox jumps over the lazy dog in 1234567890-:/;,");
-//		printf(" %u ",Sys::millis());
-//		Sys::delay(1000);
+//		Sys::delay(100);
+		for(int i=0;i<10000000;i++) i+=1;
+//		usart_send_string("Hello\n");
 		Actor::eventLoop();
 
 	}

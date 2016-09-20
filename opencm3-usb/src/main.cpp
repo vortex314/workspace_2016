@@ -175,12 +175,13 @@ int main(void) {
 	systick_counter_enable();
 
 	usart1.init();
+	led.init();
 
 	usart_send_string(" first ..................... second ");
 
 	Actor::initAll();
 //	for (int i = 0; i < 0x800000; i++)
-//		__asm__("nop");
+	//	__asm__("nop");
 
 	while (1) {
 

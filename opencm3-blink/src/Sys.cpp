@@ -16,18 +16,18 @@ extern "C" void sys_tick_handler(void)
 char Sys::_hostname[30];
 
 
-uint32_t _upTime=0;
+uint64_t _upTime=0;
 
 void Sys::tick(){
 	_upTime++;
 }
 
-uint32_t Sys::millis(){
+uint64_t Sys::millis(){
 	return _upTime;
 }
 
 void Sys::delay(uint32_t delta){
-	uint32_t endTime = Sys::millis()+delta;
+	uint64_t endTime = Sys::millis()+delta;
 	while ( endTime > Sys::millis());
 }
 #include <string.h>

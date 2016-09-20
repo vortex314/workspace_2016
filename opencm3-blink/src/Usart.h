@@ -19,34 +19,31 @@
 #define IRAM
 #include <CircBuf.h>
 #include <Bytes.h>
+#include <BufferedStream.h>
 
 #define UART_BUFFER_SIZE 512
 
 int _write(int file, char *ptr, int len);
 
-class Usart :public Actor  {
+class Usart: public Actor, public BufferedStream {
+	uint32_t _baudrate;
+	uint32_t _usartBase;
 public:
-	CircBuf _txd;
-	CircBuf _rxd;
-
-
-	Usart();
+	Usart(int idx);
 	virtual ~Usart();
-
+// Actor
 	static void usart1_isr(void);
 	void init();
 	void loop();
 
-	 Erc write(Bytes& data);
-	 Erc write(uint8_t b);
-	 bool hasData();
-	 bool hasSpace();
-	 uint8_t read();
-	 void receive(uint8_t b);
-	 Erc setBaudrate(uint32_t baudrate);
-	 uint32_t getBaudrate();
-	 Erc setMode(const char* str);
-	 void getMode(char* str);
+	Erc open();
+	Erc close();
+	void flush();
+
+	Erc setBaudrate(uint32_t baudrate);
+	uint32_t getBaudrate();
+	Erc setMode(const char* str);
+	void getMode(char* str);
 
 };
 

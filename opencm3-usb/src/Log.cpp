@@ -19,14 +19,20 @@
 #endif
 LogManager Log;
 
+static void usart_send_string(const char *s) {
+	while (*s) {
+		usart_send_blocking(USART1, *(s++));
+	}
+}
+
 void serialLog(char* start, uint32_t length) {
 #ifdef ARDUINO
 	Serial.write(start, length);
 	Serial.write("\r\n");
 #endif
 #ifdef OPENCM3
-	start++;
-	length++;
+	*(start+length)='\0';
+	usart_send_string(start);
 #endif
 }
 

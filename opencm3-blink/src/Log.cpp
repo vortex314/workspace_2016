@@ -6,6 +6,7 @@
  */
 
 #include <Log.h>
+#include <Str.h>
 #include <stdlib.h>
 #include <stdio.h>
 #ifdef ARDUINO
@@ -18,6 +19,11 @@
 #include <libopencm3/stm32/usart.h>
 #endif
 LogManager Log;
+static void usart_send_string(const char *s) {
+	while (*s) {
+		usart_send_blocking(USART1, *(s++));
+	}
+}
 
 void serialLog(char* start, uint32_t length) {
 #ifdef ARDUINO
@@ -25,8 +31,8 @@ void serialLog(char* start, uint32_t length) {
 	Serial.write("\r\n");
 #endif
 #ifdef OPENCM3
-	start++;
-	length++;
+	*(start+length)='\0';
+	usart_send_string(start);
 #endif
 }
 
@@ -57,6 +63,12 @@ void LogManager::defaultOutput() {
 
 void LogManager::setOutput(LogFunction function) {
 	_logFunction = function;
+}
+
+void LogManager::time(){
+	Str str((uint8_t*)(_record+_offset),LINE_LENGTH - _offset);
+	str.append(Sys::millis());
+	_offset+=str.length();
 }
 
 void LogManager::printf(const char* fmt, ...) {

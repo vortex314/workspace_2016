@@ -58,7 +58,7 @@ Actor::Actor(const char* name) {
 	_actors[_id] = this;
 	_state = 0;
 	_ptLine = LineNumberInvalid;
-	LOGF(" Actor ctor : %s [%d]", _name, _id);
+//	LOGF(" Actor ctor : %s [%d]", _name, _id);
 }
 
 void Actor::logHeader(const char* prefix, Header h) {
