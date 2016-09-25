@@ -32,6 +32,7 @@
 
 #include <Sys.h>
 #include <UsbSerial.h>
+#include <SlipStream.h>
 /*
  * This file is part of the libopencm3 project.
  *
@@ -177,6 +178,10 @@ static void systick_setup(void) {
 	systick_counter_enable();
 }
 
+const char line[]="HELLO USB\n\r";
+
+SlipStream ss(256,usbSerial);
+
 class Tracer: public Actor {
 public:
 	Tracer() :
@@ -189,6 +194,8 @@ public:
 		if (timeout()) {
 			LOGF(" Tracer ");
 			timeout(1000);
+			Bytes bytes((uint8_t*)line,sizeof(line));
+			ss.send(bytes);
 		}
 	}
 };

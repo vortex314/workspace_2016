@@ -31,6 +31,8 @@ void usb_on_rxd(usb_callback f) {
 	usb_rxd_function = f;
 }
 
+
+
 static const struct usb_device_descriptor dev = {
 	.bLength = USB_DT_DEVICE_SIZE,
 	.bDescriptorType = USB_DT_DEVICE,
@@ -297,7 +299,12 @@ void usb_init()
 }
 
 void usb_poll() {
-
 		usbd_poll(usbd_dev);
+}
 
+bool usb_txd(uint8_t* data,uint32_t length){
+		if ( usbd_ep_write_packet(usbd_dev, 0x82, data, length)){
+			return true;
+		}
+		return false;
 }

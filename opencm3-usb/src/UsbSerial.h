@@ -17,6 +17,7 @@ class UsbSerial : public Actor,public BufferedByteStream {
 
 public:
 	uint32_t _rxd_overflow;
+	bool _rxd_event_send;
 	UsbSerial();
 	virtual ~UsbSerial();
 	void init();
