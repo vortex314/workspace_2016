@@ -5,23 +5,23 @@
  *      Author: lieven2
  */
 
-#include <BufferedStream.h>
+#include <BufferedByteStream.h>
 
-BufferedStream::BufferedStream(uint32_t size) :
+BufferedByteStream::BufferedByteStream(uint32_t size) :
 		_rxd(size), _txd(size) {
 
 }
 
-BufferedStream::~BufferedStream() {
+BufferedByteStream::~BufferedByteStream() {
 
 }
 
-Erc BufferedStream::write(uint8_t b) {
+Erc BufferedByteStream::write(uint8_t b) {
 	return _txd.write(b);
 	return E_OK;
 }
 
-Erc BufferedStream::write(Bytes& bytes) {
+Erc BufferedByteStream::write(Bytes& bytes) {
 	Erc erc;
 	bytes.offset(0);
 	if (!_txd.hasSpace(bytes.length()))
@@ -34,36 +34,36 @@ Erc BufferedStream::write(Bytes& bytes) {
 	return E_OK;
 }
 
-bool BufferedStream::hasSpace() {
+bool BufferedByteStream::hasSpace() {
 	return _txd.hasSpace();
 }
 
-bool BufferedStream::hasData() {
+bool BufferedByteStream::hasData() {
 	return _rxd.hasData();
 }
 
-bool BufferedStream::hasToSend() {
+bool BufferedByteStream::hasToSend() {
 	return _txd.hasData();
 }
 
-uint8_t BufferedStream::toSend() {
+uint8_t BufferedByteStream::toSend() {
 	return _txd.read();
 }
 
-uint8_t BufferedStream::read() {
+uint8_t BufferedByteStream::read() {
 	return _rxd.read();
 }
 
-Erc BufferedStream::read(Bytes& bytes) {
+Erc BufferedByteStream::read(Bytes& bytes) {
 	while (hasData())
 		bytes.write(read());
 	return E_OK;
 }
 
-bool BufferedStream::canReceive() {
+bool BufferedByteStream::canReceive() {
 	return _rxd.hasSpace();
 }
-void BufferedStream::receive(uint8_t data) {
+void BufferedByteStream::receive(uint8_t data) {
 	_rxd.write(data);
 }
 

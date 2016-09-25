@@ -5,18 +5,18 @@
  *      Author: lieven2
  */
 
-#ifndef BUFFEREDSTREAM_H_
-#define BUFFEREDSTREAM_H_
+#ifndef BUFFEREDBYTESTREAM_H_
+#define BUFFEREDBYTESTREAM_H_
 #include <Bytes.h>
+#include <ByteStream.h>
 #include <CircBuf.h>
-#include <Stream.h>
-class BufferedStream : public Stream{
+class BufferedByteStream : public ByteStream{
 	CircBuf _rxd;
 	CircBuf _txd;
 public:
 	// user interface
-	BufferedStream(uint32_t sizeBuffer);
-	~BufferedStream();
+	BufferedByteStream(uint32_t sizeBuffer);
+	~BufferedByteStream();
 	virtual Erc open()=0;
 	virtual Erc close()=0;
 	virtual void flush()=0;
@@ -33,4 +33,4 @@ public:
 	uint8_t toSend();
 };
 
-#endif /* BUFFEREDSTREAM_H_ */
+#endif /* BUFFEREDBYTESTREAM_H_ */

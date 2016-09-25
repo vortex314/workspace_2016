@@ -114,6 +114,8 @@ static const LineNumber LineNumberInvalid = (LineNumber) (-1);
 // the last PT_WAIT, which is then switched on at the next Run).
 
 class Actor;
+#include <functional>
+// typedef std::function<void(Header)> EventHandler;
 typedef void (Actor::*EventHandler)(Header);
 #define CALL_MEMBER_FN(object,ptrToMember)  ((object).*(ptrToMember))
 #include <functional>
@@ -152,6 +154,7 @@ public:
 	void on(Header, EventHandler);
 	void on(Event, Actor&, EventHandler);
 	void publish(uint8_t event);
+	static void publishSync(Header);
 	void publish(uint8_t src, uint8_t event);
 	virtual void loop() {};
 	static void publish(Header);

@@ -5,13 +5,13 @@
  *      Author: lieven2
  */
 
-#ifndef STREAM_H_
-#define STREAM_H_
+#ifndef BYTE_STREAM_H_
+#define BYTE_STREAM_H_
 #include <Bytes.h>
-class Stream {
+class ByteStream {
 public:
-	Stream(){};
-	virtual ~Stream(){};
+	ByteStream(){};
+	virtual ~ByteStream(){};
 	virtual Erc open()=0;
 	virtual Erc close()=0;
 	virtual Erc write(Bytes& data)=0;
@@ -23,4 +23,4 @@ public:
 	virtual void flush()=0;
 };
 
-#endif /* STREAM_H_ */
+#endif /* BYTE_STREAM_H_ */

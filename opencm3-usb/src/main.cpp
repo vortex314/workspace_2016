@@ -31,7 +31,7 @@
 #include <libopencm3/cm3/systick.h>
 
 #include <Sys.h>
-#include <usb_serial.h>
+#include <UsbSerial.h>
 /*
  * This file is part of the libopencm3 project.
  *
@@ -106,42 +106,48 @@ public:
 	~Led() {
 	}
 
+	void onTimeout(Header h) {
+		(void) h;
+		if (_isOn) {
+			_isOn = false;
+			gpio_set(LED_PORT, LED_PIN);
+		} else {
+			_isOn = true;
+			gpio_clear(LED_PORT, LED_PIN);
+		}
+		timeout(_interval);
+	}
+
 	void init() {
 
 		/* Set GPIO13 (in GPIO port C) to 'output push-pull'. */
 		gpio_set_mode(LED_PORT, GPIO_MODE_OUTPUT_2_MHZ,
 		GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
-		gpio_clear(LED_PORT, LED_PIN);
+		gpio_set(LED_PORT, LED_PIN);
+		on(TIMEOUT, *this, (EventHandler) &Led::onTimeout);
+//		on(TIMEOUT,  std::bind( &Led::onTimeout, *this, std::placeholders::_1 ));
+
 		timeout(100);
 	}
 
 	void loop() {
+//		return;
 		if (timeout()) {
-			if (_isOn) {
-				_isOn = false;
-				gpio_set(LED_PORT, LED_PIN);
-			} else {
-				_isOn = true;
-				gpio_clear(LED_PORT, LED_PIN);
-			}
-			timeout(_interval);
+			onTimeout(Header(TIMEOUT));
 		}
 	}
 
 	void blinkFast(Header h) {
-		(void)h;
-		LOGF("");
-		_interval = 500;
+		(void) h;
+		_interval = 100;
 	}
 
 	void blinkSlow(Header h) {
-		(void)h;
-		LOGF("");
-		_interval = 2000;
+		(void) h;
+		_interval = 500;
 	}
 };
 
-Led led;
 #include <Usart.h>
 
 void usartLog(char* data, uint32_t length) {
@@ -150,20 +156,16 @@ void usartLog(char* data, uint32_t length) {
 	usart1.flush();
 }
 
-int main(void) {
+void usartBufferedLog(char* data, uint32_t length) {
+	Bytes bytes((uint8_t*) data, length);
+	usart1.write(bytes);
+	usart1.write('\n');
+	usart1.flush();
+}
 
-	clock_setup();
-	usb_init();
-
-	gpio_setup();
-	gpio_set(GPIOC,GPIO13);
-
-	Sys::hostname("STM32F103");
-	/* 72MHz / 8 => 9000000 counts per second */
+static void systick_setup(void) {
+	/* 72MHz / 8 => 9000000 counts per second. */
 	systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8);
-
-	Log.setOutput(usartLog);
-	LOGF(" ready to log ?");
 
 	/* 9000000/9000 = 1000 overflows per second - every 1ms one interrupt */
 	/* SysTick interrupt every N clock pulses: set reload to N-1 */
@@ -173,25 +175,54 @@ int main(void) {
 
 	/* Start counting. */
 	systick_counter_enable();
+}
 
-	usart1.init();
+class Tracer: public Actor {
+public:
+	Tracer() :
+			Actor("Tracer") {
+	}
+	void init() {
+		timeout(1000);
+	}
+	void loop() {
+		if (timeout()) {
+			LOGF(" Tracer ");
+			timeout(1000);
+		}
+	}
+};
+
+Tracer tracer;
+Led led;
+
+int main(void) {
+
 	led.init();
+	clock_setup();
+	gpio_setup();
+	gpio_set(GPIOC, GPIO13);
 
-	usart_send_string(" first ..................... second ");
+	Sys::hostname("STM32F103");
+
+	//	Log.setOutput(usartLog);
+	Log.setOutput(usartBufferedLog);
+	LOGF(" ready to log ?");
+
+	systick_setup();
 
 	Actor::initAll();
-//	for (int i = 0; i < 0x800000; i++)
-	//	__asm__("nop");
 
 	while (1) {
-
-		if (Sys::millis() % 1000 == 0) {
-			usart_send_string(" LOOPING... \n ");
-			LOGF("The quick brown fox jumps over the lazy dog in 1234567890-:/;,");
-		}
-
 		Actor::eventLoop();
-		usb_poll(); // not needed
+		if (usbSerial.hasData()) {
+			uint32_t count = 0;
+			while (usbSerial.hasData()) {
+				usbSerial.read();
+				count++;
+			}
+			LOGF(" DATA RXD %d bytes ", count);
+		}
 	}
 
 	return 0;

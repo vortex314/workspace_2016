@@ -10,8 +10,8 @@
 Usart usart1(1);
 
 Usart::Usart(int idx) :
-		Actor("Usart"), BufferedStream(UART_BUFFER_SIZE), _baudrate(115200), _usartBase(
-				USART1 + (idx-1) * 0x400) {
+		Actor("Usart"), BufferedByteStream(UART_BUFFER_SIZE), _baudrate(115200), _usartBase(
+		USART1 + (idx - 1) * 0x400) {
 }
 
 Usart::~Usart() {
@@ -20,6 +20,11 @@ Usart::~Usart() {
 
 void Usart::init() {
 	open();
+}
+
+void Usart::loop() {
+	if (hasData())
+		publish(RXD);
 }
 
 Erc Usart::open() {
@@ -51,7 +56,7 @@ Erc Usart::close() {
 	return E_OK;
 }
 
-void Usart::flush(){
+void Usart::flush() {
 	USART_CR1(USART1) |= USART_CR1_TXEIE;
 }
 
@@ -97,6 +102,3 @@ int _write(int file, char *ptr, int len) {
 	return 0;
 }
 
-void Usart::loop() {
-
-}

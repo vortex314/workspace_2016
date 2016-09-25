@@ -19,13 +19,13 @@
 #define IRAM
 #include <CircBuf.h>
 #include <Bytes.h>
-#include <BufferedStream.h>
+#include <BufferedByteStream.h>
 
 #define UART_BUFFER_SIZE 512
 
 int _write(int file, char *ptr, int len);
 
-class Usart: public Actor, public BufferedStream {
+class Usart: public Actor, public BufferedByteStream {
 	uint32_t _baudrate;
 	uint32_t _usartBase;
 public:

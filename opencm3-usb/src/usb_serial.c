@@ -23,6 +23,13 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/cdc.h>
 #include <libopencm3/cm3/scb.h>
+#include <usb_serial.h>
+
+usb_callback usb_rxd_function=0;
+
+void usb_on_rxd(usb_callback f) {
+	usb_rxd_function = f;
+}
 
 static const struct usb_device_descriptor dev = {
 	.bLength = USB_DT_DEVICE_SIZE,
@@ -210,6 +217,10 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 
 	char buf[64];
 	int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
+
+	if (usb_rxd_function) {
+		usb_rxd_function(buf,len);
+	}
 
 	if (len) {
 		usbd_ep_write_packet(usbd_dev, 0x82, buf, len);

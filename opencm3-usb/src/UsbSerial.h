@@ -10,18 +10,22 @@
 
 #include <CircBuf.h>
 #include <Actor.h>
+#include <BufferedByteStream.h>
 
 
+class UsbSerial : public Actor,public BufferedByteStream {
 
-class UsbSerial : public Actor {
 public:
+	uint32_t _rxd_overflow;
 	UsbSerial();
 	virtual ~UsbSerial();
 	void init();
-	void poll();
-	bool hasData();
-	bool hasSpace();
-
+	void loop();
+	Erc open();
+	Erc close();
+	void flush();
 };
+
+extern UsbSerial usbSerial;
 
 #endif /* USBSERIAL_H_ */

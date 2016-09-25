@@ -76,6 +76,7 @@ void Actor::on(Header h, EventHandler m) {
 	logHeader(__FUNCTION__, h);
 }
 
+
 void Actor::on(Event event, Actor& actor, EventHandler m) {
 	_handlers[_handlerCount]._filter = Header(id(), event);
 	_handlers[_handlerCount]._method = m;
@@ -98,20 +99,26 @@ bool Actor::match(Header src, Header filter) {
 	return false;
 }
 
+void Actor::publishSync(Header hdr) {
+	for (uint32_t i = 0; i < _handlerCount; i++) {
+		//			logHeader(" filter : ", _handlers[i]._filter);
+		if (match(hdr, _handlers[i]._filter)) {
+//			LOGF(" calling handler ! %s ", _handlers[i]._actor->name());
+			Sys::delay(10);
+//			_handlers[i]._method(hdr);
+			CALL_MEMBER_FN(*_handlers[i]._actor,_handlers[i]._method)(hdr);
+		}
+	}
+}
+
 void Actor::eventLoop() {
 	Header hdr;
 	// Check event in Queue
 	while (_queue.get(hdr) == E_OK) {
 //		LOGF("hdr:%X", hdr);
 //		logHeader(" event on queue :", hdr);
-		for (uint32_t i = 0; i < _handlerCount; i++) {
-//			logHeader(" filter : ", _handlers[i]._filter);
-			if (match(hdr, _handlers[i]._filter)) {
-				LOGF(" calling handler ! %s ", _handlers[i]._actor->name());
-				Sys::delay(10);
-				CALL_MEMBER_FN(*_handlers[i]._actor,_handlers[i]._method)(hdr);
-			}
-		}
+		publishSync(hdr);
+
 	}
 	for (uint32_t i = 0; i < _actorCount; i++) {
 		_actors[i]->loop();
@@ -119,6 +126,7 @@ void Actor::eventLoop() {
 			for (uint32_t j = 0; j < _handlerCount; j++) {
 				if (match(Header(_actors[i]->id(), TIMEOUT),
 						_handlers[i]._filter)) {
+//					_handlers[i]._method(hdr);
 					CALL_MEMBER_FN(*_handlers[i]._actor,_handlers[i]._method)(
 							hdr);
 				}
