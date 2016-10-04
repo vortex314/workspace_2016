@@ -16,7 +16,7 @@ extern "C" void sys_tick_handler(void)
 char Sys::_hostname[30];
 
 
-uint64_t _upTime=0;
+uint64_t Sys::_upTime=0;
 
 void Sys::tick(){
 	_upTime++;

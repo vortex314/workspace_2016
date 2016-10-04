@@ -5,25 +5,6 @@
  *      Author: 600104947
  */
 
-/*
- * This file is part of the libopencm3 project.
- *
- * Copyright (C) 2009 Uwe Hermann <uwe@hermann-uwe.de>
- *
- * This library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library.  If not, see <http://www.gnu.org/licenses/>.
- */
-
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
@@ -33,24 +14,10 @@
 #include <Sys.h>
 #include <UsbSerial.h>
 #include <SlipStream.h>
-/*
- * This file is part of the libopencm3 project.
- *
- * Copyright (C) 2009 Uwe Hermann <uwe@hermann-uwe.de>
- *
- * This library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this library.  If not, see <http://www.gnu.org/licenses/>.
- */
+#include <Actor.h>
+#include <Log.h>
+#include <Usart.h>
+#include <Led.h>
 
 // void* __dso_handle;
 static void clock_setup(void) {
@@ -79,78 +46,6 @@ void usart_send_string(const char *s) {
 	}
 }
 
-#include <Actor.h>
-#include <Log.h>
-
-#define MAPLE_MINI
-
-#ifdef MAPLE_MINI
-#define LED_PORT GPIOB
-#define LED_PIN	 GPIO1
-#endif
-#ifdef STM32F103_MINIMAL
-#define LED_PORT GPIOC
-#define LED_PIN	 GPIO13
-#endif
-
-class Led: public Actor {
-	uint32_t _interval;
-	bool _isOn;
-public:
-
-	Led() :
-			Actor("Led") {
-		_interval = 100;
-		_isOn = true;
-	}
-
-	~Led() {
-	}
-
-	void onTimeout(Header h) {
-		(void) h;
-		if (_isOn) {
-			_isOn = false;
-			gpio_set(LED_PORT, LED_PIN);
-		} else {
-			_isOn = true;
-			gpio_clear(LED_PORT, LED_PIN);
-		}
-		timeout(_interval);
-	}
-
-	void init() {
-
-		/* Set GPIO13 (in GPIO port C) to 'output push-pull'. */
-		gpio_set_mode(LED_PORT, GPIO_MODE_OUTPUT_2_MHZ,
-		GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
-		gpio_set(LED_PORT, LED_PIN);
-		on(TIMEOUT, *this, (EventHandler) &Led::onTimeout);
-//		on(TIMEOUT,  std::bind( &Led::onTimeout, *this, std::placeholders::_1 ));
-
-		timeout(100);
-	}
-
-	void loop() {
-//		return;
-		if (timeout()) {
-			onTimeout(Header(TIMEOUT));
-		}
-	}
-
-	void blinkFast(Header h) {
-		(void) h;
-		_interval = 100;
-	}
-
-	void blinkSlow(Header h) {
-		(void) h;
-		_interval = 500;
-	}
-};
-
-#include <Usart.h>
-
 void usartLog(char* data, uint32_t length) {
 	Bytes bytes((uint8_t*) data, length);
 	usart1.write(bytes);
@@ -178,9 +73,15 @@ static void systick_setup(void) {
 	systick_counter_enable();
 }
 
-const char line[]="HELLO USB\n\r";
+#include <EventBus.h>
 
-SlipStream ss(256,usbSerial);
+#include <Cbor.h>
+
+Cbor cbor(1024);
+
+const char line[] = "HELLO USB\n\r";
+
+SlipStream ss(256, usbSerial);
 
 class Tracer: public Actor {
 public:
@@ -191,11 +92,31 @@ public:
 		timeout(1000);
 	}
 	void loop() {
+		Str str(100);
 		if (timeout()) {
-			LOGF(" Tracer ");
+
+			cbor.clear();
+			cbor.addKeyValue(0,H("mqtt.connect"));
+			str = "limero.ddns.net";
+			cbor.addKeyValue(H("host"),str);
+			cbor.addKeyValue(H("port"),1883);
+			ss.send(cbor);
+
+			cbor.clear();
+			cbor.addKeyValue(0,H("mqtt.publish"));
+			cbor.addKeyValue(H("topic"),"stm32/system/alive");
+			cbor.addKeyValue(H("message"),"true");
+			ss.send(cbor);
+
+			cbor.clear();
+			cbor.addKeyValue(0,H("mqtt.publish"));
+			cbor.addKeyValue(H("topic"),"stm32/system/uptime");
+			cbor.addKeyValue(H("message"),Sys::millis());
+			ss.send(cbor);
+
+
 			timeout(1000);
-			Bytes bytes((uint8_t*)line,sizeof(line));
-			ss.send(bytes);
+			ss.send(cbor);
 		}
 	}
 };
@@ -216,11 +137,21 @@ int main(void) {
 	Log.setOutput(usartBufferedLog);
 	LOGF(" ready to log ?");
 
+	eb.subscribe(0, [](Cbor& cbor) { // all events
+				uint16_t cmd;
+				if ( cbor.getKeyValue(0,cmd) ) {
+					if ( cmd==H("mqtt.connect") || cmd==H("mqtt.subscribe")|| cmd==H("mqtt.publish")) {
+						ss.send(cbor);
+					}
+				}
+			});
+
 	systick_setup();
 
 	Actor::initAll();
 
 	while (1) {
+		eb.eventLoop();
 		Actor::eventLoop();
 		if (usbSerial.hasData()) {
 			uint32_t count = 0;
@@ -228,7 +159,7 @@ int main(void) {
 				usbSerial.read();
 				count++;
 			}
-			LOGF(" DATA RXD %d bytes ", count);
+			LOGF(" DATA RXD %d bytes.", count);
 		}
 	}
 
