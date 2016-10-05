@@ -93,32 +93,39 @@ public:
 	}
 	void loop() {
 		Str str(100);
-		if (timeout()) {
-
+		Cbor cbor(100);
+		PT_BEGIN()
+		;
+		while (true) {
+			PT_YIELD_UNTIL(timeout());
 			cbor.clear();
-			cbor.addKeyValue(0,H("mqtt.connect"));
+			cbor.addKeyValue(0, H("mqtt.connect"));
 			str = "limero.ddns.net";
-			cbor.addKeyValue(H("host"),str);
-			cbor.addKeyValue(H("port"),1883);
+			cbor.addKeyValue(H("host"), str);
+			cbor.addKeyValue(H("port"), 1883);
 			ss.send(cbor);
-
-			cbor.clear();
-			cbor.addKeyValue(0,H("mqtt.publish"));
-			cbor.addKeyValue(H("topic"),"stm32/system/alive");
-			cbor.addKeyValue(H("message"),"true");
-			ss.send(cbor);
-
-			cbor.clear();
-			cbor.addKeyValue(0,H("mqtt.publish"));
-			cbor.addKeyValue(H("topic"),"stm32/system/uptime");
-			cbor.addKeyValue(H("message"),Sys::millis());
-			ss.send(cbor);
-
-
 			timeout(1000);
+			PT_WAIT_UNTIL(timeout());
+
+			cbor.clear();
+			cbor.addKeyValue(0, H("mqtt.publish"));
+			cbor.addKeyValue(H("topic"), "stm32/system/alive");
+			cbor.addKeyValue(H("message"), "true");
 			ss.send(cbor);
+			timeout(1000);
+			PT_WAIT_UNTIL(timeout());
+
+			cbor.clear();
+			cbor.addKeyValue(0, H("mqtt.publish"));
+			cbor.addKeyValue(H("topic"), "stm32/system/uptime");
+			cbor.addKeyValue(H("message"), Sys::millis());
+			ss.send(cbor);
+			timeout(1000);
+			PT_WAIT_UNTIL(timeout());
+
 		}
-	}
+	PT_END()
+}
 };
 
 Tracer tracer;
@@ -142,6 +149,7 @@ int main(void) {
 				if ( cbor.getKeyValue(0,cmd) ) {
 					if ( cmd==H("mqtt.connect") || cmd==H("mqtt.subscribe")|| cmd==H("mqtt.publish")) {
 						ss.send(cbor);
+						LOGF("send");
 					}
 				}
 			});
