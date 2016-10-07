@@ -7,19 +7,16 @@
 
 #include <usb_serial.h>
 #include <UsbSerial.h>
+#include <EventBus.h>
 
-UsbSerial usbSerial;
+UsbSerial usb;
 
 void usbCallback(uint8_t* data, uint32_t length) {
-	for (uint32_t i = 0; i < length; i++) {
-		if (usbSerial.canReceive()) {
-			usbSerial.receive(data[i]);
-			usbSerial. _rxd_event_send=false;
-		} else {
-			usbSerial._rxd_overflow++;
-		}
-	}
-//	LOGF("%s", data);
+	Bytes bytes(data,length);
+	Cbor cbor(200);
+	cbor.addKeyValue(H("data"),bytes);
+	eb.publish(H("usb.rxd"),cbor);
+	return;
 }
 
 UsbSerial::UsbSerial() :
@@ -32,17 +29,23 @@ UsbSerial::~UsbSerial() {
 
 }
 
-void UsbSerial::init() {
+void UsbSerial::setup() {
 	usb_init();
 	open();
+	eb.subscribe(0, [](Cbor& cbor) { // all events
+		usb.loop();
+	});
 }
+
+
 
 void UsbSerial::loop() {
 	usb_poll(); // not needed
+	/*
 	if (hasData() && !_rxd_event_send) {
-		publish(RXD);
+		eb.publish(RXD);
 		_rxd_event_send = true;
-	}
+	}*/
 	if (hasToSend()) {
 		uint8_t buffer[64];
 		int i = 0;

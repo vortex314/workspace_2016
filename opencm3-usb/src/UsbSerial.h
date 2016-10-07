@@ -20,13 +20,13 @@ public:
 	bool _rxd_event_send;
 	UsbSerial();
 	virtual ~UsbSerial();
-	void init();
+	void setup();
 	void loop();
 	Erc open();
 	Erc close();
 	void flush();
 };
 
-extern UsbSerial usbSerial;
+extern UsbSerial usb;
 
 #endif /* USBSERIAL_H_ */

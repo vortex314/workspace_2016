@@ -6,6 +6,7 @@
  */
 
 #include <Usart.h>
+#include <EventBus.h>
 
 Usart usart1(1);
 
@@ -23,8 +24,10 @@ void Usart::init() {
 }
 
 void Usart::loop() {
-	if (hasData())
-		publish(RXD);
+	if (hasData()) {
+
+		eb.publish(H("usart.xd"));
+	}
 }
 
 Erc Usart::open() {
