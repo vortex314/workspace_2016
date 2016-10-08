@@ -78,44 +78,86 @@ public:
 	}
 	void setup() {
 		timeout(1000);
-		eb.subscribe(H("timeout"), this, (MethodHandler) &Tracer::onEvent);
+		eb.subscribe(this);	// trap all events
 	}
+
+	void sendConnect() {
+		Str str(20);
+		Cbor cbor(50);
+		cbor.addKeyValue(0, H("mqtt.connect"));
+		str = "limero.ddns.net";
+		cbor.addKeyValue(H("host"), str);
+		cbor.addKeyValue(H("port"), 1883);
+		eb.publish(cbor);
+	}
+
+	void sendSubscribe() {
+		Str str(20);
+		Cbor cbor(50);
+		cbor.addKeyValue(0, H("mqtt.subscribe"));
+		str = "put/stm32/#";
+		cbor.addKeyValue(H("topic"), str);
+		eb.publish(cbor);
+	}
+
 	void onEvent(Cbor& msg) {
 		uint16_t event;
 		msg.getKeyValue(0, event);
 		Str str(100);
 		Cbor cbor(100);
 		PT_BEGIN()
-		;
-		PT_WAIT_UNTIL(event == H("init"));
-
+		PT_WAIT_UNTIL(timeout());
 		while (true) {
-			PT_WAIT_UNTIL(timeout());
-			cbor.clear();
-			cbor.addKeyValue(0, H("mqtt.connect"));
-			str = "limero.ddns.net";
-			cbor.addKeyValue(H("host"), str);
-			cbor.addKeyValue(H("port"), 1883);
-			eb.publish(cbor);
-			timeout(1000);
-			PT_WAIT_UNTIL(event == H("timeout"));
+			CONNECTING: while (true) {
+				timeout(2000);
+				eb.publish(H("link.ping"));
+				PT_YIELD_UNTIL(
+						(event == H("timeout")) || (event == H("link.pong")));
+				if (event == H("link.pong"))
+					break;
+			}
 
-			cbor.clear();
-			cbor.addKeyValue(0, H("mqtt.publish"));
-			cbor.addKeyValue(H("topic"), "stm32/system/alive");
-			cbor.addKeyValue(H("message"), "true");
-			eb.publish(cbor);
-			timeout(1000);
-			PT_WAIT_UNTIL(event == H("timeout"));
+			while (true) {
+				timeout(2000);
+				sendConnect();
+				PT_YIELD_UNTIL(
+						(event == H("timeout"))
+								|| (event == H("mqtt.connack")));
+				if (event == H("mqtt.connack") && !msg.gotoKey(H("error")))
+					break;
+			}
 
-			cbor.clear();
-			cbor.addKeyValue(0, H("mqtt.publish"));
-			cbor.addKeyValue(H("topic"), "stm32/system/uptime");
-			cbor.addKeyValue(H("message"), Sys::millis());
-			eb.publish(cbor);
-			timeout(1000);
-			PT_WAIT_UNTIL(event == H("timeout"));
+			while (true) {
+				timeout(1000);
+				sendSubscribe();
+				PT_YIELD_UNTIL(
+						(event == H("timeout")) || (event == H("mqtt.suback")));
+				if (event == H("mqtt.suback")) {
+					if (msg.gotoKey(H("error")))
+						goto CONNECTING;
+					else
+						break;
+				}
+			}
 
+			while (true) {
+				timeout(100);
+				cbor.clear();
+				cbor.addKeyValue(0, H("mqtt.publish"));
+				cbor.addKeyValue(H("topic"), "stm32/system/alive");
+				cbor.addKeyValue(H("message"), "true");
+				eb.publish(cbor);
+				cbor.clear();
+				cbor.addKeyValue(0, H("mqtt.publish"));
+				cbor.addKeyValue(H("topic"), "stm32/system/uptime");
+				str.append(Sys::millis());
+				cbor.addKeyValue(H("message"), str);
+				PT_YIELD_UNTIL(
+						event == H("timeout") || event == H("mqtt.puback"));
+				if (event == H("mqtt.puback"))
+					if (msg.gotoKey(H("error")))
+						goto CONNECTING;
+			}
 		}
 	PT_END()
 }
@@ -143,11 +185,11 @@ int main(void) {
 	Log.setOutput(usartBufferedLog);
 	LOGF(" ready to log ?");
 
-	eb.subscribe(0, [](Cbor& cbor) { // all events
-				usart_send_string(" any event \n");
+	eb.subscribe(0, [](Cbor& cbor) { // route events to gateway
+//				usart_send_string(" any event \n");
 				uint16_t cmd;
 				if ( cbor.getKeyValue(0,cmd) ) {
-					if ( cmd==H("mqtt.connect") || cmd==H("mqtt.subscribe")|| cmd==H("mqtt.publish")) {
+					if ( cmd==H("mqtt.connect") || cmd==H("mqtt.subscribe")|| cmd==H("mqtt.publish") || cmd==H("link.ping")) {
 						ss.send(cbor);
 						LOGF("send");
 					}
