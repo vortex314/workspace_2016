@@ -70,5 +70,14 @@ Erc UsbSerial::close() {
 }
 
 void UsbSerial::flush() {
-
+	if (hasToSend()) {
+			uint8_t buffer[64];
+			int i = 0;
+			while (i < sizeof(buffer) && hasToSend()) {
+				buffer[i++] = toSend();
+			}
+			if (i) {
+				usb_txd(buffer, i);
+			}
+		}
 }
