@@ -160,10 +160,10 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) {
 		usb_rxd_function(buf, len);
 	}
 
-	if (len) {
+/*	if (len) {
 		usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
 		buf[len] = 0;
-	}
+	}*/
 }
 
 static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue) {
@@ -206,6 +206,9 @@ void usb_lp_can_rx0_isr(void) {
 
 void usb_init() {
 	SCB_VTOR = (uint32_t) 0x08000000;
+	nvic_disable_irq(NVIC_USB_LP_CAN_RX0_IRQ); // enable only after usbd_dev is ready
+	nvic_disable_irq(NVIC_USB_WAKEUP_IRQ);
+	rcc_periph_clock_enable(RCC_USB);
 
 //	rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
@@ -226,13 +229,18 @@ void usb_init() {
 
 	usbd_dev = usbd_init(&st_usbfs_v1_usb_driver, &dev, &config, usb_strings, 3,
 			usbd_control_buffer, sizeof(usbd_control_buffer));
-	nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ); // enable only after usbd_dev is ready
-	nvic_enable_irq(NVIC_USB_WAKEUP_IRQ);
 	usbd_register_set_config_callback(usbd_dev, cdcacm_set_config);
+//	nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ); // enable only after usbd_dev is ready
+//	nvic_enable_irq(NVIC_USB_WAKEUP_IRQ);
 }
 
 void usb_poll() {
 	usbd_poll(usbd_dev);
+}
+#define __NVIC_PRIO_BITS		4
+static inline void __set_BASEPRI(uint32_t value)
+{
+	__asm volatile ("MSR basepri, %0" : : "r" (value) : "memory");
 }
 
 bool usb_txd(uint8_t* data, uint32_t length) {

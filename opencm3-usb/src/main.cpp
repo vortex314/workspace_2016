@@ -29,6 +29,7 @@ static void clock_setup(void) {
 	rcc_periph_clock_enable(RCC_GPIOA);
 	rcc_periph_clock_enable(RCC_GPIOB);
 	rcc_periph_clock_enable(RCC_GPIOC);
+	rcc_periph_clock_enable(RCC_USB);
 
 	/* Enable clocks for GPIO port B (for GPIO_USART3_TX) and USART3. */
 	rcc_periph_clock_enable(RCC_USART1);
@@ -59,6 +60,13 @@ void usartBufferedLog(char* data, uint32_t length) {
 	usart1.write(bytes);
 	usart1.write('\n');
 	usart1.flush();
+}
+
+
+char logBuffer[256];
+
+void bufferLog(char* data, uint32_t length) {
+	strncpy(logBuffer,data,length);
 }
 
 static void systick_setup(void) {
@@ -101,12 +109,14 @@ public:
 	}
 
 	void onEvent(Cbor& msg) {
+		int a=H("timeout");
+		int b=H("link.pong");
 		uint16_t event;
 		msg.getKeyValue(0, event);
 		Str str(100);
 		Cbor cbor(100);
 		PT_BEGIN()
-		PT_WAIT_UNTIL(timeout());
+		PT_YIELD_UNTIL(timeout());
 		while (true) {
 			CONNECTING: while (true) {
 				timeout(2000);
@@ -167,7 +177,32 @@ SlipStream ss(256, usb);
 Tracer tracer;
 Led led;
 
-extern "C" void hard_fault_handler_c(unsigned long *hardfault_args){
+#pragma weak hard_fault_handler = HardFault_Handler
+
+// Use the 'naked' attribute so that C stacking is not used.
+extern "C" __attribute__((naked))
+ void HardFault_Handler(void){
+        /*
+         * Get the appropriate stack pointer, depending on our mode,
+         * and use it as the parameter to the C handler. This function
+         * will never return
+         */
+         // ".syntax unified\n"
+        __asm(
+                        "MOVS   R0, #4  \n"
+                        "MOV    R1, LR  \n"
+                        "TST    R0, R1  \n"
+                        "BEQ    _MSP    \n"
+                        "MRS    R0, PSP \n"
+                        "B      HardFault_HandlerC      \n"
+                "_MSP:  \n"
+                        "MRS    R0, MSP \n"
+                        "B      HardFault_HandlerC      \n"
+                );
+        // ".syntax divided\n"
+}
+
+extern "C" void HardFault_HandlerC(unsigned long *hardfault_args){
   volatile unsigned long stacked_r0 ;
   volatile unsigned long stacked_r1 ;
   volatile unsigned long stacked_r2 ;
@@ -215,7 +250,8 @@ extern "C" void hard_fault_handler_c(unsigned long *hardfault_args){
   __asm("BKPT #0\n") ; // Break into the debugger
 }
 
-
+#include <libopencm3/cm3/scb.h>
+#include <libopencm3/cm3/vector.h>
 int main(void) {
 
 	clock_setup();
@@ -227,11 +263,14 @@ int main(void) {
 	tracer.setup();
 	ss.setup();
 	usb.setup();
+//	SCB_SHCSR |= SCB_SHCSR_MEMFAULTENA;
+//	NVIC_SetPriority(MemoryM, 1);
 
 	Sys::hostname("STM32F103");
 
 	//	Log.setOutput(usartLog);
-	Log.setOutput(usartBufferedLog);
+//	Log.setOutput(usartBufferedLog);
+	Log.setOutput(bufferLog);
 	LOGF(" ready to log ?");
 
 	eb.subscribe(0, [](Cbor& cbor) { // route events to gateway
@@ -247,15 +286,7 @@ int main(void) {
 
 	while (1) {
 		eb.eventLoop();
-
-		if (usb.hasData()) {
-			uint32_t count = 0;
-			while (usb.hasData()) {
-				ss.onRecv(usb.read());
-				count++;
-			}
-			LOGF(" DATA RXD %d bytes.", count);
-		}
+		usb.loop();
 	}
 
 	return 0;

@@ -6,6 +6,7 @@
  */
 
 #include <usb_serial.h>
+//#include <cdcacm.h>
 #include <UsbSerial.h>
 #include <EventBus.h>
 
@@ -37,29 +38,29 @@ void UsbSerial::setup() {
 	});
 }
 
-
+__ALIGN_BEGIN uint8_t buffer2[64] __ALIGN_END ;
 
 void UsbSerial::loop() {
+
 	usb_poll(); // not needed
+
 	/*
 	if (hasData() && !_rxd_event_send) {
-		eb.publish(RXD);
+		eb.publish(H("usb.rxd"));
 		_rxd_event_send = true;
 	}*/
 	if (hasToSend()) {
-		uint8_t buffer[64];
 		int i = 0;
-		while (i < sizeof(buffer) && hasToSend()) {
-			buffer[i++] = toSend();
+		while (i < sizeof(buffer2) && hasToSend()) {
+			buffer2[i++] = toSend();
 		}
 		if (i) {
-			usb_txd(buffer, i);
+			usb_txd(buffer2, i);
 		}
 	}
 }
 
 Erc UsbSerial::open() {
-
 	usb_on_rxd(usbCallback);
 	return E_OK;
 }
@@ -69,15 +70,21 @@ Erc UsbSerial::close() {
 	return E_OK;
 }
 
+__ALIGN_BEGIN uint8_t buffer[64] __ALIGN_END ;
+
+
 void UsbSerial::flush() {
+	LOGF("i");
 	if (hasToSend()) {
-			uint8_t buffer[64];
 			int i = 0;
 			while (i < sizeof(buffer) && hasToSend()) {
 				buffer[i++] = toSend();
 			}
+			LOGF("ii");
 			if (i) {
 				usb_txd(buffer, i);
 			}
+			LOGF("oo");
 		}
+	LOGF("o");
 }

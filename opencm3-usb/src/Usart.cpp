@@ -30,6 +30,10 @@ void Usart::loop() {
 	}
 }
 
+void Usart::setup(){
+	open();
+}
+
 Erc Usart::open() {
 	/* Setup GPIO pin GPIO_USART1_TX. */
 	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,

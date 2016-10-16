@@ -35,6 +35,7 @@ public:
 	static void usart1_isr(void);
 	void init();
 	void loop();
+	void setup();
 
 	Erc open();
 	Erc close();
