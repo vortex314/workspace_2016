@@ -205,16 +205,12 @@ void usb_lp_can_rx0_isr(void) {
 }
 
 void usb_init() {
-	SCB_VTOR = (uint32_t) 0x08000000;
+//	SCB_VTOR = (uint32_t) 0x08000000;
 	nvic_disable_irq(NVIC_USB_LP_CAN_RX0_IRQ); // enable only after usbd_dev is ready
 	nvic_disable_irq(NVIC_USB_WAKEUP_IRQ);
-	rcc_periph_clock_enable(RCC_USB);
+//	rcc_periph_clock_enable(RCC_USB);
 
 //	rcc_clock_setup_in_hse_8mhz_out_72mhz();
-
-//	rcc_periph_clock_enable(RCC_GPIOA);
-//	rcc_periph_clock_enable(RCC_GPIOB);
-//	rcc_periph_clock_enable(RCC_GPIOC);
 
 	/* Setup pin to pull up the D+ high, so autodect works
 	 * with the bootloader.  The circuit is active low. */
@@ -222,10 +218,7 @@ void usb_init() {
 	GPIO_CNF_OUTPUT_OPENDRAIN, USB_PUP_PIN);
 	gpio_clear(USB_PUP_PORT, USB_PUP_PIN);
 
-	/* Setup LED pins mode */
-//	gpio_set(LED_PORT, LED_PIN);
-//	gpio_set_mode(LED_PORT, GPIO_MODE_OUTPUT_2_MHZ,
-//		      GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
+
 
 	usbd_dev = usbd_init(&st_usbfs_v1_usb_driver, &dev, &config, usb_strings, 3,
 			usbd_control_buffer, sizeof(usbd_control_buffer));

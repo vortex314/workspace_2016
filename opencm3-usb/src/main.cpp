@@ -286,7 +286,6 @@ int main(void) {
 
 	while (1) {
 		eb.eventLoop();
-		usb.loop();
 	}
 
 	return 0;
