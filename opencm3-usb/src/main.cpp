@@ -21,6 +21,8 @@
 #include <EventBus.h>
 #include <Cbor.h>
 
+EventBus eb(5120);
+
 // void* __dso_handle;
 static void clock_setup(void) {
 	rcc_clock_setup_in_hse_8mhz_out_72mhz();
@@ -254,9 +256,13 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args){
 #include <libopencm3/cm3/vector.h>
 int main(void) {
 
+	volatile uint16_t hh=H("timeout");
+	static_assert(H("timeout")==45638," testing");
+//	static_assert(HASH("timeout")!=0," HASH ");
+	static_assert(HH("timeout")!=0," HH ");
 	clock_setup();
-	gpio_setup();
-	gpio_set(GPIOC, GPIO13);
+	gpio_setup(); // not used
+	gpio_set(GPIOC, GPIO13); // not used
 	usart1.setup();
 	systick_setup();
 	led.setup();

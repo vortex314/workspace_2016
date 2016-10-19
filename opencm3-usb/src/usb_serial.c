@@ -160,10 +160,10 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) {
 		usb_rxd_function(buf, len);
 	}
 
-/*	if (len) {
+	if (len) {
 		usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
 		buf[len] = 0;
-	}*/
+	}
 }
 
 static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue) {
@@ -216,6 +216,9 @@ void usb_init() {
 	 * with the bootloader.  The circuit is active low. */
 	gpio_set_mode(USB_PUP_PORT, GPIO_MODE_OUTPUT_2_MHZ,
 	GPIO_CNF_OUTPUT_OPENDRAIN, USB_PUP_PIN);
+	gpio_set(USB_PUP_PORT, USB_PUP_PIN);
+	for (int i = 0; i < 1000000; i++)
+		i += 1;
 	gpio_clear(USB_PUP_PORT, USB_PUP_PIN);
 
 
@@ -237,6 +240,7 @@ static inline void __set_BASEPRI(uint32_t value)
 }
 
 bool usb_txd(uint8_t* data, uint32_t length) {
+	return true;
 	if (usbd_ep_write_packet(usbd_dev, 0x82, data, length)) {
 		return true;
 	}
