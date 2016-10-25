@@ -76,17 +76,13 @@ __ALIGN_BEGIN uint8_t buffer[MAX_PACKET_SIZE] __ALIGN_END ;
 
 
 void UsbSerial::flush() {
-	LOGF("i");
 	if (hasToSend()) {
 			int i = 0;
 			while (i < sizeof(buffer) && hasToSend()) {
 				buffer[i++] = toSend();
 			}
-			LOGF("ii");
 			if (i) {
 				usb_txd(buffer, i);
 			}
-			LOGF("oo");
 		}
-	LOGF("o");
 }

@@ -85,7 +85,7 @@ void rcc_clock_setup_in_hse_8mhz_out_48mhz(void) {
 static void clock_setup(void) {
 
 //	rcc_periph_clock_enable(RCC_USB);
-//	rcc_clock_setup_in_hse_8mhz_out_72mhz();
+	rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
 	/* Enable GPIOC clock. */
 	rcc_periph_clock_enable(RCC_GPIOA);
@@ -93,9 +93,9 @@ static void clock_setup(void) {
 	rcc_periph_clock_enable(RCC_GPIOC);
 
 	/* Enable clocks for GPIO port B (for GPIO_USART3_TX) and USART3. */
-	rcc_periph_clock_enable(RCC_USART1);
-	rcc_periph_clock_enable(RCC_USART2);
-	rcc_periph_clock_enable(RCC_USART3);
+//	rcc_periph_clock_enable(RCC_USART1);
+//	rcc_periph_clock_enable(RCC_USART2);
+//	rcc_periph_clock_enable(RCC_USART3);
 
 //	rcc_clock_setup_in_hse_8mhz_out_48mhz();
 
@@ -172,8 +172,9 @@ public:
 	}
 
 	void onEvent(Cbor& msg) {
-		int a = H("timeout");
-		int b = H("link.pong");
+		volatile int a = H("timeout");
+		volatile int b = H("link.pong");
+		volatile int c=H("mqtt.connack");
 		uint16_t event;
 		msg.getKeyValue(0, event);
 		Str str(100);
@@ -190,7 +191,7 @@ public:
 					break;
 			}
 
-			MQTT_CONNECT: {
+			MQTT_CONNECT: while (true){
 				timeout(2000);
 				sendConnect();
 				PT_YIELD_UNTIL(
@@ -201,8 +202,8 @@ public:
 				goto CONNECTING;
 			}
 
-			MQTT_SUBSCRIBE: {
-				timeout(1000);
+			MQTT_SUBSCRIBE: while (true){
+				timeout(2000);
 				sendSubscribe();
 				PT_YIELD_UNTIL(
 						(event == H("timeout")) || (event == H("mqtt.suback")));
@@ -321,6 +322,7 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/cm3/vector.h>
+#include <usb_serial.h>
 
 extern "C" int my_usb();
 int main(void) {
@@ -337,8 +339,9 @@ int main(void) {
 	systick_setup();
 	led.setup();
 	tracer.setup();
-	ss.setup();
 	usb.setup();
+	ss.setup();
+
 //	SCB_SHCSR |= SCB_SHCSR_MEMFAULTENA;
 //	NVIC_SetPriority(MemoryM, 1);
 

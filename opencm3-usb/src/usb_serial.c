@@ -29,6 +29,25 @@ usb_callback usb_rxd_function = 0;
 
 // store USB connection status
 static bool usb_connected;
+/* Buffer to be used for control requests. */
+uint8_t usbd_control_buffer[128];
+
+
+#define MAPLE_MINI
+
+#ifdef MAPLE_MINI
+#define LED_PORT GPIOB
+#define LED_PIN	 GPIO1
+#define USB_PUP_PORT GPIOB
+#define USB_PUP_PIN	GPIO9
+#endif
+#ifdef STM32F103_MINIMAL
+#define LED_PORT GPIOC
+#define LED_PIN	 GPIO13
+#endif
+static usbd_device *g_usbd_dev;
+
+#include <libopencm3/cm3/nvic.h>
 
 // use suspend callback to detect disconnect
 static void suspend_cb(void) {
@@ -45,7 +64,8 @@ void usb_on_rxd(usb_callback f) {
 	usb_rxd_function = f;
 }
 
-static const struct usb_device_descriptor dev = { .bLength = USB_DT_DEVICE_SIZE, //
+static const struct usb_device_descriptor dev = { //
+		.bLength = USB_DT_DEVICE_SIZE, //
 		.bDescriptorType = USB_DT_DEVICE,  //
 		.bcdUSB = 0x0200, //
 		.bDeviceClass = USB_CLASS_CDC, //
@@ -72,7 +92,8 @@ static const struct usb_endpoint_descriptor comm_endp[] = { //
 						.bDescriptorType = USB_DT_ENDPOINT, //
 						.bEndpointAddress = 0x83, //
 						.bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT, //
-						.wMaxPacketSize = 16, .bInterval = 255, //
+						.wMaxPacketSize = 16, //
+						.bInterval = 255, //
 				}//
 		};
 
@@ -180,8 +201,7 @@ static const struct usb_config_descriptor config = { //
 static const char *usb_strings[] = { "Black Sphere Technologies",
 		"CDC-ACM Demo", "DEMO", };
 
-/* Buffer to be used for control requests. */
-uint8_t usbd_control_buffer[128];
+
 
 static int cdcacm_control_request(usbd_device *usbd_dev,
 		struct usb_setup_data *req, uint8_t **buf, uint16_t *len,
@@ -253,61 +273,49 @@ static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue) {
 	usbd_register_suspend_callback(usbd_dev, suspend_cb);
 	usbd_register_resume_callback(usbd_dev, resume_cb);
 	usbd_register_reset_callback(usbd_dev,reset_cb);
-//	nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ); // enable only after usbd_dev is ready
-//	nvic_enable_irq(NVIC_USB_WAKEUP_IRQ);
 }
 
-#define MAPLE_MINI
-
-#ifdef MAPLE_MINI
-#define LED_PORT GPIOB
-#define LED_PIN	 GPIO1
-#define USB_PUP_PORT GPIOB
-#define USB_PUP_PIN	GPIO9
-#endif
-#ifdef STM32F103_MINIMAL
-#define LED_PORT GPIOC
-#define LED_PIN	 GPIO13
-#endif
-static usbd_device *usbd_dev;
-
-#include <libopencm3/cm3/nvic.h>
 
 void usb_wakeup_isr(void) {
-	usbd_poll(usbd_dev);
+	usbd_poll(g_usbd_dev);
 }
 
 void usb_lp_can_rx0_isr(void) {
-	usbd_poll(usbd_dev);
+	usbd_poll(g_usbd_dev);
 }
 
 void usb_init() {
 //	SCB_VTOR = (uint32_t) 0x08000000;
-	nvic_disable_irq(NVIC_USB_LP_CAN_RX0_IRQ); // enable only after usbd_dev is ready
-	nvic_disable_irq(NVIC_USB_WAKEUP_IRQ);
-	rcc_periph_clock_enable(RCC_USB);
+//	nvic_disable_irq(NVIC_USB_LP_CAN_RX0_IRQ); // enable only after usbd_dev is ready
+//	nvic_disable_irq(NVIC_USB_WAKEUP_IRQ);
+//	rcc_periph_clock_enable(RCC_USB);
 
-	rcc_clock_setup_in_hse_8mhz_out_72mhz();
-	rcc_periph_clock_enable(RCC_USB);
+//	rcc_clock_setup_in_hse_8mhz_out_72mhz();
+//	rcc_periph_clock_enable(RCC_USB);
 
 	/* Setup pin to pull up the D+ high, so autodect works
 	 * with the bootloader.  The circuit is active low. */
+	/* Setup GPIOC Pin 12 to pull up the D+ high, so autodect works
+	 * with the bootloader.  The circuit is active low. */
 	gpio_set_mode(USB_PUP_PORT, GPIO_MODE_OUTPUT_2_MHZ,
-	GPIO_CNF_OUTPUT_OPENDRAIN, USB_PUP_PIN);
+		      GPIO_CNF_OUTPUT_OPENDRAIN, USB_PUP_PIN);
 	gpio_set(USB_PUP_PORT, USB_PUP_PIN);
-	for (int i = 0; i < 1000000; i++)
-		i += 1;
+	for (int i = 0; i < 0x800000; i++)
+		__asm__("nop");
+
 	gpio_clear(USB_PUP_PORT, USB_PUP_PIN);
 
-	usbd_dev = usbd_init(&st_usbfs_v1_usb_driver, &dev, &config, usb_strings, 3,
+	g_usbd_dev = usbd_init(&st_usbfs_v1_usb_driver, &dev, &config, usb_strings, 3,
 			usbd_control_buffer, sizeof(usbd_control_buffer));
-	usbd_register_set_config_callback(usbd_dev, cdcacm_set_config);
+	usbd_register_set_config_callback(g_usbd_dev, cdcacm_set_config);
 //	cdcacm_set_config(usbd_dev, 0);
+	nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ); // enable only after usbd_dev is ready
+	nvic_enable_irq(NVIC_USB_WAKEUP_IRQ);
 
 }
 
 void usb_poll() {
-	usbd_poll(usbd_dev);
+	usbd_poll(g_usbd_dev);
 }
 #define __NVIC_PRIO_BITS		4
 static inline void __set_BASEPRI(uint32_t value) {
@@ -316,7 +324,7 @@ static inline void __set_BASEPRI(uint32_t value) {
 
 bool usb_txd(uint8_t* data, uint32_t length) {
 	if (usb_connected)
-		if (usbd_ep_write_packet(usbd_dev, 0x82, data, length)) {
+		if (usbd_ep_write_packet(g_usbd_dev, 0x82, data, length)) {
 			return true;
 		}
 	return false;
