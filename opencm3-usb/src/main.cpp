@@ -10,6 +10,7 @@
 #include <libopencm3/stm32/usart.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/systick.h>
+#include <libopencm3/stm32/flash.h>
 
 #include <Sys.h>
 #include <UsbSerial.h>
@@ -24,19 +25,80 @@
 EventBus eb(5120);
 
 // void* __dso_handle;
+
+void rcc_clock_setup_in_hse_8mhz_out_48mhz(void) {
+	/* Enable internal high-speed oscillator. */
+	rcc_osc_on(RCC_HSI);
+	rcc_wait_for_osc_ready(RCC_HSI);
+
+	/* Select HSI as SYSCLK source. */
+	rcc_set_sysclk_source(RCC_CFGR_SW_SYSCLKSEL_HSICLK);
+
+	/* Enable external high-speed oscillator 8MHz. */
+	rcc_osc_on(RCC_HSE);
+	rcc_wait_for_osc_ready(RCC_HSE);
+	rcc_set_sysclk_source(RCC_CFGR_SW_SYSCLKSEL_HSECLK);
+
+	/*
+	 * Set prescalers for AHB, ADC, ABP1, ABP2.
+	 * Do this before touching the PLL (TODO: why?).
+	 */
+	rcc_set_hpre(RCC_CFGR_HPRE_SYSCLK_NODIV); /* Set. 48MHz Max. 72MHz */
+	rcc_set_adcpre(RCC_CFGR_ADCPRE_PCLK2_DIV4); /* Set. 12MHz Max. 14MHz */
+	rcc_set_ppre1(RCC_CFGR_PPRE1_HCLK_DIV2); /* Set. 24MHz Max. 36MHz */
+	rcc_set_ppre2(RCC_CFGR_PPRE2_HCLK_NODIV); /* Set. 48MHz Max. 72MHz */
+
+	/*
+	 * Sysclk runs with 24MHz -> 0 waitstates.
+	 * 0WS from 0-24MHz
+	 * 1WS from 24-48MHz
+	 * 2WS from 48-72MHz
+	 */
+	flash_set_ws(FLASH_ACR_LATENCY_1WS);
+
+	/*
+	 * Set the PLL multiplication factor to 3.
+	 * 8MHz (external) * 6 (multiplier) = 48MHz
+	 */
+	rcc_set_pll_multiplication_factor(RCC_CFGR_PLLMUL_PLL_CLK_MUL6);
+	/* Select HSE as PLL source. */
+	rcc_set_pll_source(RCC_CFGR_PLLSRC_HSE_CLK);
+	/*
+	 * External frequency undivided before entering PLL
+	 * (Only valid / needed for HSE).
+	 */
+	rcc_set_pllxtpre(RCC_CFGR_PLLXTPRE_HSE_CLK);
+
+	rcc_set_usbpre(RCC_CFGR_USBPRE_PLL_CLK_NODIV);
+
+	/* Enable PLL oscillator and wait for it to stabilize. */
+	rcc_osc_on(RCC_PLL);
+	rcc_wait_for_osc_ready(RCC_PLL);
+	/* Select PLL as SYSCLK source. */
+	rcc_set_sysclk_source(RCC_CFGR_SW_SYSCLKSEL_PLLCLK);
+	/* Set the peripheral clock frequencies used */
+	rcc_ahb_frequency = 48000000;
+	rcc_apb1_frequency = 24000000;
+	rcc_apb2_frequency = 48000000;
+}
+
 static void clock_setup(void) {
-	rcc_clock_setup_in_hse_8mhz_out_72mhz();
+
+//	rcc_periph_clock_enable(RCC_USB);
+//	rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
 	/* Enable GPIOC clock. */
 	rcc_periph_clock_enable(RCC_GPIOA);
 	rcc_periph_clock_enable(RCC_GPIOB);
 	rcc_periph_clock_enable(RCC_GPIOC);
-	rcc_periph_clock_enable(RCC_USB);
 
 	/* Enable clocks for GPIO port B (for GPIO_USART3_TX) and USART3. */
 	rcc_periph_clock_enable(RCC_USART1);
 	rcc_periph_clock_enable(RCC_USART2);
 	rcc_periph_clock_enable(RCC_USART3);
+
+//	rcc_clock_setup_in_hse_8mhz_out_48mhz();
+
 }
 
 static void gpio_setup(void) {
@@ -64,11 +126,10 @@ void usartBufferedLog(char* data, uint32_t length) {
 	usart1.flush();
 }
 
-
 char logBuffer[256];
 
 void bufferLog(char* data, uint32_t length) {
-	strncpy(logBuffer,data,length);
+	strncpy(logBuffer, data, length);
 }
 
 static void systick_setup(void) {
@@ -111,8 +172,8 @@ public:
 	}
 
 	void onEvent(Cbor& msg) {
-		int a=H("timeout");
-		int b=H("link.pong");
+		int a = H("timeout");
+		int b = H("link.pong");
 		uint16_t event;
 		msg.getKeyValue(0, event);
 		Str str(100);
@@ -129,7 +190,7 @@ public:
 					break;
 			}
 
-			while (true) {
+			MQTT_CONNECT: {
 				timeout(2000);
 				sendConnect();
 				PT_YIELD_UNTIL(
@@ -137,38 +198,43 @@ public:
 								|| (event == H("mqtt.connack")));
 				if (event == H("mqtt.connack") && !msg.gotoKey(H("error")))
 					break;
+				goto CONNECTING;
 			}
 
-			while (true) {
+			MQTT_SUBSCRIBE: {
 				timeout(1000);
 				sendSubscribe();
 				PT_YIELD_UNTIL(
 						(event == H("timeout")) || (event == H("mqtt.suback")));
-				if (event == H("mqtt.suback")) {
-					if (msg.gotoKey(H("error")))
-						goto CONNECTING;
-					else
-						break;
-				}
+				if (event == H("mqtt.suback") && !msg.gotoKey(H("error")))
+					break;
+				goto CONNECTING;
 			}
 
-			while (true) {
-				timeout(100);
+			MQTT_PUBLISH: while (true) {
 				cbor.clear();
 				cbor.addKeyValue(0, H("mqtt.publish"));
 				cbor.addKeyValue(H("topic"), "stm32/system/alive");
 				cbor.addKeyValue(H("message"), "true");
 				eb.publish(cbor);
+				timeout(100);
+				PT_YIELD_UNTIL(
+						event == H("timeout") || event == H("mqtt.puback"));
 				cbor.clear();
 				cbor.addKeyValue(0, H("mqtt.publish"));
 				cbor.addKeyValue(H("topic"), "stm32/system/uptime");
 				str.append(Sys::millis());
 				cbor.addKeyValue(H("message"), str);
+				eb.publish(cbor);
+				timeout(100);
 				PT_YIELD_UNTIL(
 						event == H("timeout") || event == H("mqtt.puback"));
 				if (event == H("mqtt.puback"))
 					if (msg.gotoKey(H("error")))
 						goto CONNECTING;
+				timeout(100);
+				PT_YIELD_UNTIL(event == H("timeout")); // sleep
+
 			}
 		}
 	PT_END()
@@ -183,83 +249,87 @@ Led led;
 
 // Use the 'naked' attribute so that C stacking is not used.
 extern "C" __attribute__((naked))
- void HardFault_Handler(void){
-        /*
-         * Get the appropriate stack pointer, depending on our mode,
-         * and use it as the parameter to the C handler. This function
-         * will never return
-         */
-         // ".syntax unified\n"
-        __asm(
-                        "MOVS   R0, #4  \n"
-                        "MOV    R1, LR  \n"
-                        "TST    R0, R1  \n"
-                        "BEQ    _MSP    \n"
-                        "MRS    R0, PSP \n"
-                        "B      HardFault_HandlerC      \n"
-                "_MSP:  \n"
-                        "MRS    R0, MSP \n"
-                        "B      HardFault_HandlerC      \n"
-                );
-        // ".syntax divided\n"
+void HardFault_Handler(void) {
+	/*
+	 * Get the appropriate stack pointer, depending on our mode,
+	 * and use it as the parameter to the C handler. This function
+	 * will never return
+	 */
+	// ".syntax unified\n"
+	__asm(
+			"MOVS   R0, #4  \n"
+			"MOV    R1, LR  \n"
+			"TST    R0, R1  \n"
+			"BEQ    _MSP    \n"
+			"MRS    R0, PSP \n"
+			"B      HardFault_HandlerC      \n"
+			"_MSP:  \n"
+			"MRS    R0, MSP \n"
+			"B      HardFault_HandlerC      \n"
+	);
+	// ".syntax divided\n"
 }
 
-extern "C" void HardFault_HandlerC(unsigned long *hardfault_args){
-  volatile unsigned long stacked_r0 ;
-  volatile unsigned long stacked_r1 ;
-  volatile unsigned long stacked_r2 ;
-  volatile unsigned long stacked_r3 ;
-  volatile unsigned long stacked_r12 ;
-  volatile unsigned long stacked_lr ;
-  volatile unsigned long stacked_pc ;
-  volatile unsigned long stacked_psr ;
-  volatile unsigned long _CFSR ;
-  volatile unsigned long _HFSR ;
-  volatile unsigned long _DFSR ;
-  volatile unsigned long _AFSR ;
-  volatile unsigned long _BFAR ;
-  volatile unsigned long _MMAR ;
+extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
+	volatile unsigned long stacked_r0;
+	volatile unsigned long stacked_r1;
+	volatile unsigned long stacked_r2;
+	volatile unsigned long stacked_r3;
+	volatile unsigned long stacked_r12;
+	volatile unsigned long stacked_lr;
+	volatile unsigned long stacked_pc;
+	volatile unsigned long stacked_psr;
+	volatile unsigned long _CFSR;
+	volatile unsigned long _HFSR;
+	volatile unsigned long _DFSR;
+	volatile unsigned long _AFSR;
+	volatile unsigned long _BFAR;
+	volatile unsigned long _MMAR;
 
-  stacked_r0 = ((unsigned long)hardfault_args[0]) ;
-  stacked_r1 = ((unsigned long)hardfault_args[1]) ;
-  stacked_r2 = ((unsigned long)hardfault_args[2]) ;
-  stacked_r3 = ((unsigned long)hardfault_args[3]) ;
-  stacked_r12 = ((unsigned long)hardfault_args[4]) ;
-  stacked_lr = ((unsigned long)hardfault_args[5]) ;
-  stacked_pc = ((unsigned long)hardfault_args[6]) ;
-  stacked_psr = ((unsigned long)hardfault_args[7]) ;
+	stacked_r0 = ((unsigned long) hardfault_args[0]);
+	stacked_r1 = ((unsigned long) hardfault_args[1]);
+	stacked_r2 = ((unsigned long) hardfault_args[2]);
+	stacked_r3 = ((unsigned long) hardfault_args[3]);
+	stacked_r12 = ((unsigned long) hardfault_args[4]);
+	stacked_lr = ((unsigned long) hardfault_args[5]);
+	stacked_pc = ((unsigned long) hardfault_args[6]);
+	stacked_psr = ((unsigned long) hardfault_args[7]);
 
-  // Configurable Fault Status Register
-  // Consists of MMSR, BFSR and UFSR
-  _CFSR = (*((volatile unsigned long *)(0xE000ED28))) ;
+	// Configurable Fault Status Register
+	// Consists of MMSR, BFSR and UFSR
+	_CFSR = (*((volatile unsigned long *) (0xE000ED28)));
 
-  // Hard Fault Status Register
-  _HFSR = (*((volatile unsigned long *)(0xE000ED2C))) ;
+	// Hard Fault Status Register
+	_HFSR = (*((volatile unsigned long *) (0xE000ED2C)));
 
-  // Debug Fault Status Register
-  _DFSR = (*((volatile unsigned long *)(0xE000ED30))) ;
+	// Debug Fault Status Register
+	_DFSR = (*((volatile unsigned long *) (0xE000ED30)));
 
-  // Auxiliary Fault Status Register
-  _AFSR = (*((volatile unsigned long *)(0xE000ED3C))) ;
+	// Auxiliary Fault Status Register
+	_AFSR = (*((volatile unsigned long *) (0xE000ED3C)));
 
-  // Read the Fault Address Registers. These may not contain valid values.
-  // Check BFARVALID/MMARVALID to see if they are valid values
-  // MemManage Fault Address Register
-  _MMAR = (*((volatile unsigned long *)(0xE000ED34))) ;
-  // Bus Fault Address Register
-  _BFAR = (*((volatile unsigned long *)(0xE000ED38))) ;
+	// Read the Fault Address Registers. These may not contain valid values.
+	// Check BFARVALID/MMARVALID to see if they are valid values
+	// MemManage Fault Address Register
+	_MMAR = (*((volatile unsigned long *) (0xE000ED34)));
+	// Bus Fault Address Register
+	_BFAR = (*((volatile unsigned long *) (0xE000ED38)));
 
-  __asm("BKPT #0\n") ; // Break into the debugger
+	__asm("BKPT #0\n");
+	// Break into the debugger
 }
 
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/cm3/vector.h>
+
+extern "C" int my_usb();
 int main(void) {
 
-	volatile uint16_t hh=H("timeout");
+	volatile uint16_t hh = H("timeout");
 	static_assert(H("timeout")==45638," testing");
 //	static_assert(HASH("timeout")!=0," HASH ");
-	static_assert(HH("timeout")!=0," HH ");
+//	static_assert(HH("timeout")!=0," HH ");
+//	my_usb();
 	clock_setup();
 	gpio_setup(); // not used
 	gpio_set(GPIOC, GPIO13); // not used
@@ -288,6 +358,16 @@ int main(void) {
 						LOGF("send");
 					}
 				}
+			});
+	eb.subscribe(H("usb.rxd"), [](Cbor& cbor) { // send usb data to slip processing
+//				LOGF(" usb.rxd execute ");
+				Bytes data(1000);
+				if (cbor.getKeyValue(H("data"),data)) {
+					data.offset(0);
+					while (data.hasData()) {
+						ss.onRecv(data.read());
+					}
+				} else LOGF(" no usb data ");
 			});
 
 	while (1) {

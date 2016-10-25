@@ -70,7 +70,9 @@ Erc UsbSerial::close() {
 	return E_OK;
 }
 
-__ALIGN_BEGIN uint8_t buffer[64] __ALIGN_END ;
+#define MAX_PACKET_SIZE 64
+
+__ALIGN_BEGIN uint8_t buffer[MAX_PACKET_SIZE] __ALIGN_END ;
 
 
 void UsbSerial::flush() {
