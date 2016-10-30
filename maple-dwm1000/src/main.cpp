@@ -11,6 +11,9 @@
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/systick.h>
 #include <libopencm3/stm32/flash.h>
+#include <libopencm3/cm3/scb.h>
+#include <libopencm3/cm3/vector.h>
+#include <usb_serial.h>
 
 #include <Sys.h>
 #include <UsbSerial.h>
@@ -21,6 +24,7 @@
 #include <Led.h>
 #include <EventBus.h>
 #include <Cbor.h>
+#include <DWM1000_Anchor.h>
 
 EventBus eb(5120);
 
@@ -245,6 +249,7 @@ public:
 SlipStream ss(256, usb);
 Tracer tracer;
 Led led;
+DWM1000_Anchor dwm1000;
 
 #pragma weak hard_fault_handler = HardFault_Handler
 
@@ -320,9 +325,7 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 	// Break into the debugger
 }
 
-#include <libopencm3/cm3/scb.h>
-#include <libopencm3/cm3/vector.h>
-#include <usb_serial.h>
+
 
 extern "C" int my_usb();
 int main(void) {
@@ -339,8 +342,10 @@ int main(void) {
 	systick_setup();
 	led.setup();
 	tracer.setup();
-	usb.setup();
+
 	ss.setup();
+	dwm1000.setup();
+
 
 //	SCB_SHCSR |= SCB_SHCSR_MEMFAULTENA;
 //	NVIC_SetPriority(MemoryM, 1);
@@ -373,6 +378,7 @@ int main(void) {
 				} else LOGF(" no usb data ");
 			});
 
+//	usb.setup();	// usb setup close to loop to get enumeration handling done
 	while (1) {
 		eb.eventLoop();
 	}
