@@ -9,10 +9,14 @@
 #define LED_H_
 
 #include <Actor.h>
+#include <Gpio.h>
+
+#define LED_GPIO PB(1)
 
 class Led: public Actor {
 	uint32_t _interval;
 	bool _isOn;
+	Gpio* _gpio;
 public:
 	Led() ;
 	~Led();

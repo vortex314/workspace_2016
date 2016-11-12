@@ -17,16 +17,21 @@ Led::Led() :
 		Actor("Led") {
 	_interval = 100;
 	_isOn = true;
+	_gpio = new Gpio(LED_GPIO);
 }
 
 Led::~Led() {
 }
 
 void Led::setup() {
-	/* Set GPIO13 (in GPIO port C) to 'output push-pull'. */
-	gpio_set_mode(LED_PORT, GPIO_MODE_OUTPUT_2_MHZ,
-	GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
-	gpio_set(LED_PORT, LED_PIN);
+	_gpio->setMode(Gpio::Mode::GPIO_OUTPUT);
+	_gpio->setup();
+	/*
+
+	 // Set GPIO13 (in GPIO port C) to 'output push-pull'.
+	 gpio_set_mode(LED_PORT, GPIO_MODE_OUTPUT_2_MHZ,
+	 GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
+	 gpio_set(LED_PORT, LED_PIN);*/
 	timeout(100);
 	eb.subscribe(this);
 }
@@ -37,10 +42,12 @@ void Led::onEvent(Cbor& cbor) {
 		if (event == H("timeout")) {
 			if (_isOn) {
 				_isOn = false;
-				gpio_set(LED_PORT, LED_PIN);
+				_gpio->write(0);
+				//gpio_set(LED_PORT, LED_PIN);
 			} else {
 				_isOn = true;
-				gpio_clear(LED_PORT, LED_PIN);
+				_gpio->write(1);
+				//gpio_clear(LED_PORT, LED_PIN);
 			}
 			timeout(_interval);
 		}

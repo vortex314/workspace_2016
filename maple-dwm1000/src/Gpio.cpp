@@ -16,7 +16,7 @@ Gpio::Gpio(uint32_t pin) {
 		_port = GPIOB;
 	if ( PORT(pin) == 3)
 		_port = GPIOC;
-	_pin = PIN(pin);
+	_pin = 1 << PIN(pin);
 	_handler = 0;
 	_mode = GPIO_INPUT;
 	_edge = GPIO_EDGE_RISING;

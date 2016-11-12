@@ -26,7 +26,7 @@
 #include <Cbor.h>
 #include <DWM1000_Anchor.h>
 
-EventBus eb(5120);
+EventBus eb(2048);
 
 // void* __dso_handle;
 
@@ -100,9 +100,7 @@ static void clock_setup(void) {
 //	rcc_periph_clock_enable(RCC_USART1);
 //	rcc_periph_clock_enable(RCC_USART2);
 //	rcc_periph_clock_enable(RCC_USART3);
-
 //	rcc_clock_setup_in_hse_8mhz_out_48mhz();
-
 }
 
 static void gpio_setup(void) {
@@ -178,7 +176,7 @@ public:
 	void onEvent(Cbor& msg) {
 		volatile int a = H("timeout");
 		volatile int b = H("link.pong");
-		volatile int c=H("mqtt.connack");
+		volatile int c = H("mqtt.connack");
 		uint16_t event;
 		msg.getKeyValue(0, event);
 		Str str(100);
@@ -195,7 +193,7 @@ public:
 					break;
 			}
 
-			MQTT_CONNECT: while (true){
+			MQTT_CONNECT: while (true) {
 				timeout(2000);
 				sendConnect();
 				PT_YIELD_UNTIL(
@@ -206,7 +204,7 @@ public:
 				goto CONNECTING;
 			}
 
-			MQTT_SUBSCRIBE: while (true){
+			MQTT_SUBSCRIBE: while (true) {
 				timeout(2000);
 				sendSubscribe();
 				PT_YIELD_UNTIL(
@@ -246,10 +244,10 @@ public:
 }
 };
 
-SlipStream ss(256, usb);
-Tracer tracer;
+ SlipStream ss(256, usb);
+ Tracer tracer;
 Led led;
-DWM1000_Anchor dwm1000;
+ DWM1000_Anchor dwm1000;
 
 #pragma weak hard_fault_handler = HardFault_Handler
 
@@ -325,7 +323,33 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 	// Break into the debugger
 }
 
+class MqttProxy: public Actor {
+public:
+	MqttProxy() :
+			Actor("mqttProxy") {
+	}
+	void onEvent(Cbor& cbor) {
+		uint16_t cmd;
+		if (cbor.getKeyValue(0, cmd)) {
+			if (cmd == H("mqtt.connect") || cmd == H("mqtt.subscribe")
+					|| cmd == H("mqtt.publish") || cmd == H("link.ping")) {
+				ss.send(cbor);
+			} else if (cmd == H("usb.rxd")) {
+				Bytes data(256);
+				if (cbor.getKeyValue(H("data"), data)) {
+					data.offset(0);
+					while (data.hasData()) {
+						ss.onRecv(data.read());
+					}
+				}
+			}
 
+		}
+
+	}
+} ;
+
+MqttProxy mqttProxy;
 
 extern "C" int my_usb();
 int main(void) {
@@ -341,24 +365,19 @@ int main(void) {
 	usart1.setup();
 	systick_setup();
 	led.setup();
-	tracer.setup();
+//	tracer.setup();
+	eb.subscribe(&mqttProxy);
 
-	ss.setup();
+//	ss.setup();
 	dwm1000.setup();
-
-
-//	SCB_SHCSR |= SCB_SHCSR_MEMFAULTENA;
-//	NVIC_SetPriority(MemoryM, 1);
-
 	Sys::hostname("STM32F103");
 
-	//	Log.setOutput(usartLog);
+//	Log.setOutput(usartLog);
 //	Log.setOutput(usartBufferedLog);
 	Log.setOutput(bufferLog);
 	LOGF(" ready to log ?");
 
-	eb.subscribe(0, [](Cbor& cbor) { // route events to gateway
-//				usart_send_string(" any event \n");
+/*	eb.subscribe(0, [](Cbor& cbor) { // route events to gateway
 				uint16_t cmd;
 				if ( cbor.getKeyValue(0,cmd) ) {
 					if ( cmd==H("mqtt.connect") || cmd==H("mqtt.subscribe")|| cmd==H("mqtt.publish") || cmd==H("link.ping")) {
@@ -368,15 +387,14 @@ int main(void) {
 				}
 			});
 	eb.subscribe(H("usb.rxd"), [](Cbor& cbor) { // send usb data to slip processing
-//				LOGF(" usb.rxd execute ");
-				Bytes data(1000);
+				Bytes data(256);
 				if (cbor.getKeyValue(H("data"),data)) {
 					data.offset(0);
 					while (data.hasData()) {
 						ss.onRecv(data.read());
 					}
 				} else LOGF(" no usb data ");
-			});
+			});*/
 
 //	usb.setup();	// usb setup close to loop to get enumeration handling done
 	while (1) {

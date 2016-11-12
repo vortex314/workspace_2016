@@ -69,11 +69,14 @@ void delay(uint32_t msec) {
 }
 
 void Dwm1000::reset() { // 20msec
-	gpio_set(PORT_RESET, PIN_RESET);
+	_pinReset->write(1);
+//	gpio_set(PORT_RESET, PIN_RESET);
 	delay(10);
-	gpio_clear(PORT_RESET, PIN_RESET);
+	_pinReset->write(0);
+//	gpio_clear(PORT_RESET, PIN_RESET);
 	delay(10);
-	gpio_set(PORT_RESET, PIN_RESET);
+	_pinReset->write(1);
+//	gpio_set(PORT_RESET, PIN_RESET);
 }
 
 uint8_t init[] = { };

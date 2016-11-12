@@ -40,7 +40,7 @@ public:
 	InterruptHandler _handler;
 private:
 	uint32_t _port;
-	uint8_t _pin;
+	uint16_t _pin;
 	Mode _mode;
 
 	Edge _edge;
