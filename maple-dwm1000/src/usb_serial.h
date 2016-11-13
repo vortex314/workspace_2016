@@ -19,11 +19,15 @@ extern "C" {
 #endif
 
 
-typedef void (*usb_callback)(uint8_t* data,uint32_t length);
+typedef void (*usb_rxd_callback)(uint8_t* data,uint32_t length);
+typedef void (*usb_txd_callback)(void);
+
 extern void usb_init();
 extern void usb_poll();
-extern void usb_on_rxd(usb_callback f);
+extern void usb_on_rxd(usb_rxd_callback f);
+extern void usb_on_txd(usb_txd_callback f);
 extern bool usb_txd(uint8_t* data,uint32_t length);
+extern bool usb_is_transmitting();
 extern void doUsb();
 
 #ifdef __cplusplus

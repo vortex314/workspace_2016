@@ -25,6 +25,7 @@ public:
 	Erc open();
 	Erc close();
 	void flush();
+	void usbTxd();
 };
 
 extern UsbSerial usb;

@@ -128,10 +128,20 @@ void usartBufferedLog(char* data, uint32_t length) {
 	usart1.flush();
 }
 
-char logBuffer[256];
+char logBuffer[512];
 
 void bufferLog(char* data, uint32_t length) {
 	strncpy(logBuffer, data, length);
+}
+Cbor logMsg((uint8_t*) logBuffer, sizeof(logBuffer));
+
+void eventBusLog(char* data, uint32_t length) {
+	logMsg.clear();
+	logMsg.addKeyValue(0, H("mqtt.publish"));
+	logMsg.addKeyValue(H("topic"), "stm32/system/log");
+	Str str((uint8_t*) data, length);
+	logMsg.addKeyValue(H("message"), str);
+	eb.publish(logMsg);
 }
 
 static void systick_setup(void) {
@@ -177,10 +187,10 @@ public:
 		volatile int a = H("timeout");
 		volatile int b = H("link.pong");
 		volatile int c = H("mqtt.connack");
+		Cbor cbor(100);
+		Str str(100);
 		uint16_t event;
 		msg.getKeyValue(0, event);
-		Str str(100);
-		Cbor cbor(100);
 		PT_BEGIN()
 		PT_YIELD_UNTIL(timeout());
 		while (true) {
@@ -215,6 +225,7 @@ public:
 			}
 
 			MQTT_PUBLISH: while (true) {
+
 				cbor.clear();
 				cbor.addKeyValue(0, H("mqtt.publish"));
 				cbor.addKeyValue(H("topic"), "stm32/system/alive");
@@ -235,19 +246,14 @@ public:
 				if (event == H("mqtt.puback"))
 					if (msg.gotoKey(H("error")))
 						goto CONNECTING;
-//				timeout(100);
-//				PT_YIELD_UNTIL(event == H("timeout")); // sleep
+				timeout(1000);
+				PT_YIELD_UNTIL(event == H("timeout")); // sleep
 
 			}
 		}
 	PT_END()
 }
 };
-
- SlipStream ss(256, usb);
- Tracer tracer;
-Led led;
- DWM1000_Anchor dwm1000;
 
 #pragma weak hard_fault_handler = HardFault_Handler
 
@@ -324,22 +330,23 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 }
 
 class MqttProxy: public Actor {
+	SlipStream _ss;
 public:
-	MqttProxy() :
-			Actor("mqttProxy") {
+	MqttProxy(SlipStream& slipStream) :
+			Actor("mqttProxy"),_ss(slipStream) {
 	}
 	void onEvent(Cbor& cbor) {
 		uint16_t cmd;
 		if (cbor.getKeyValue(0, cmd)) {
 			if (cmd == H("mqtt.connect") || cmd == H("mqtt.subscribe")
 					|| cmd == H("mqtt.publish") || cmd == H("link.ping")) {
-				ss.send(cbor);
+				_ss.send(cbor);
 			} else if (cmd == H("usb.rxd")) {
 				Bytes data(256);
 				if (cbor.getKeyValue(H("data"), data)) {
 					data.offset(0);
 					while (data.hasData()) {
-						ss.onRecv(data.read());
+						_ss.onRecv(data.read());
 					}
 				}
 			}
@@ -347,58 +354,42 @@ public:
 		}
 
 	}
-} ;
+};
 
-MqttProxy mqttProxy;
+SlipStream ss(512, usb);
+Tracer tracer;
+Led led;
+DWM1000_Anchor dwm1000;
+MqttProxy mqttProxy(ss);
 
 extern "C" int my_usb();
 int main(void) {
 
 	volatile uint16_t hh = H("timeout");
 	static_assert(H("timeout")==45638," testing");
-//	static_assert(HASH("timeout")!=0," HASH ");
-//	static_assert(HH("timeout")!=0," HH ");
-//	my_usb();
 	clock_setup();
 	gpio_setup(); // not used
 	gpio_set(GPIOC, GPIO13); // not used
 	usart1.setup();
 	systick_setup();
 	led.setup();
-//	tracer.setup();
+	tracer.setup();
 	eb.subscribe(&mqttProxy);
 
-//	ss.setup();
+	ss.setup();
 	dwm1000.setup();
 	Sys::hostname("STM32F103");
 
 //	Log.setOutput(usartLog);
 //	Log.setOutput(usartBufferedLog);
-	Log.setOutput(bufferLog);
+//	Log.setOutput(bufferLog);
+	Log.setOutput(eventBusLog);
 	LOGF(" ready to log ?");
 
-/*	eb.subscribe(0, [](Cbor& cbor) { // route events to gateway
-				uint16_t cmd;
-				if ( cbor.getKeyValue(0,cmd) ) {
-					if ( cmd==H("mqtt.connect") || cmd==H("mqtt.subscribe")|| cmd==H("mqtt.publish") || cmd==H("link.ping")) {
-						ss.send(cbor);
-						LOGF("send");
-					}
-				}
-			});
-	eb.subscribe(H("usb.rxd"), [](Cbor& cbor) { // send usb data to slip processing
-				Bytes data(256);
-				if (cbor.getKeyValue(H("data"),data)) {
-					data.offset(0);
-					while (data.hasData()) {
-						ss.onRecv(data.read());
-					}
-				} else LOGF(" no usb data ");
-			});*/
-
-//	usb.setup();	// usb setup close to loop to get enumeration handling done
+	usb.setup();	// usb setup close to loop to get enumeration handling done
 	while (1) {
 		eb.eventLoop();
+		usb.loop();
 	}
 
 	return 0;

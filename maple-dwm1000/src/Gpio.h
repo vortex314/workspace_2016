@@ -10,11 +10,11 @@
 
 #include <stdint.h>
 
-#define PA(x) (0x100+(x))
-#define PB(x) (0x200+(x))
-#define PC(x) (0x300+(x))
-#define PORT(x) ((x & 0x300)>>8)
-#define PIN(x) (x & 0xFF)
+#define PA(x) (0x10000+(x))
+#define PB(x) (0x20000+(x))
+#define PC(x) (0x30000+(x))
+#define PORT(x) ((x & 0x30000)>>16)
+#define PIN(x) (x & 0xFFFF)
 
 class Gpio {
 

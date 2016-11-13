@@ -63,7 +63,7 @@ void Gpio::setInterrupt(Gpio::Edge edge, Gpio::InterruptHandler func) {
 	_edge = edge;
 }
 void Gpio::setup() {
-	if (_mode == GPIO_INPUT) {
+                                            	if (_mode == GPIO_INPUT) {
 		gpio_set_mode(_port, GPIO_MODE_INPUT, GPIO_CNF_INPUT_FLOAT, _pin);
 		if (_handler) {
 
