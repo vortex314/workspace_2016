@@ -23,6 +23,7 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/cdc.h>
 #include <libopencm3/cm3/scb.h>
+#include <libopencm3/cm3/nvic.h>
 #include <usb_serial.h>
 
 #define MAPLE_MINI
@@ -37,41 +38,6 @@
 #define LED_PORT GPIOC
 #define LED_PIN	 GPIO13
 #endif
-
-usb_rxd_callback usb_rxd_function = 0;
-usb_txd_callback usb_txd_function = 0;	//TODO
-static bool usb_transmitting = false; //TODO
-
-// store USB connection status
-static bool usb_connected;
-/* Buffer to be used for control requests. */
-uint8_t usbd_control_buffer[128];
-static usbd_device *g_usbd_dev;
-
-void usb_on_rxd(usb_rxd_callback f) {
-	usb_rxd_function = f;
-}
-
-void usb_on_txd(usb_txd_callback f) {
-	usb_txd_function = f;
-}
-
-bool usb_is_transmitting() {
-	return usb_transmitting;
-}
-
-#include <libopencm3/cm3/nvic.h>
-
-// use suspend callback to detect disconnect
-static void suspend_cb(void) {
-	usb_connected = false;
-}
-static void resume_cb(void) {
-	usb_connected = true;
-}
-static void reset_cb(void) {
-	usb_connected = false;
-}
 
 static const struct usb_device_descriptor dev = { //
 		.bLength = USB_DT_DEVICE_SIZE, //
@@ -246,13 +212,69 @@ static int cdcacm_control_request(usbd_device *usbd_dev,
 	}
 	return 0;
 }
+//__________________________________________________________________________________________________
+//
+usb_rxd_callback usb_rxd_function = 0;
+usb_txd_callback usb_txd_function = 0;	//TODO
+static bool usb_transmitting = false; //TODO
+static bool usb_connected; 								// store USB connection status
+
+uint8_t usbd_control_buffer[128];			/* Buffer to be used for control requests. */
+static usbd_device *g_usbd_dev;
+//__________________________________________________________________________________________________
+//
+void usb_on_rxd(usb_rxd_callback f) {
+	usb_rxd_function = f;
+}
+//__________________________________________________________________________________________________
+//
+void usb_on_txd(usb_txd_callback f) {
+	usb_txd_function = f;
+}
+//_____________________________________________________________________________________ usb_is_transmitting
+//
+bool usb_is_transmitting() {
+	return usb_transmitting;
+}
+//________________________________________________________________________________________ suspend_cb
+// use suspend callback to detect disconnect
+static void suspend_cb(void) {
+	usb_connected = false;
+	usb_transmitting = false;
+}
+//_______________________________________________________________________________________  resume_cb
+//
+
+static void resume_cb(void) {
+	usb_connected = true;
+	usb_transmitting = false;
+}
+//______________________________________________________________________________________   reset_cb
+//
+
+static void reset_cb(void) {
+	usb_connected = false;
+	usb_transmitting = false;
+}
+//______________________________________________________________________________________  cdcacm_tx_cb
+//
 
 static void cdcacm_tx_cb(usbd_device *usbd_dev, uint8_t ep) { //EP IN callback transaction
-	if (usb_txd_function) {
-		usb_txd_function();
-	}
+	usb_transmitting = false;
+	usb_txd_function();
 }
-
+//__________________________________________________________________________________________________
+//
+bool usb_txd(uint8_t* data, uint32_t length) {
+//	if ( !usb_transmitting)
+	if (usbd_ep_write_packet(g_usbd_dev, 0x82, data, length)) {
+		usb_transmitting = true;
+		return true;
+	}
+	return false;
+}
+//______________________________________________________________________________________ cdcacm_data_rx_cb
+//
 static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) { //EP OUT callback
 	(void) ep;
 	(void) usbd_dev;
@@ -264,7 +286,8 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) { //EP OUT call
 		usb_rxd_function(buf, len);
 	}
 }
-
+//__________________________________________________________________________________________________
+//
 static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue) {
 	(void) wValue;
 	(void) usbd_dev;
@@ -287,11 +310,13 @@ static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue) {
 	usbd_register_resume_callback(usbd_dev, resume_cb);
 	usbd_register_reset_callback(usbd_dev, reset_cb);
 }
-
+//__________________________________________________________________________________________________
+//
 void usb_wakeup_isr(void) {
 	usbd_poll(g_usbd_dev);
 }
-
+//__________________________________________________________________________________________________
+//
 void usb_lp_can_rx0_isr(void) {
 	usbd_poll(g_usbd_dev);
 }
@@ -308,7 +333,8 @@ void usb_renumeration_force() {
 
 	gpio_clear(USB_PUP_PORT, USB_PUP_PIN);
 }
-
+//__________________________________________________________________________________________________
+//
 void usb_init() {
 	usb_renumeration_force();
 
@@ -320,20 +346,16 @@ void usb_init() {
 	nvic_enable_irq(NVIC_USB_LP_CAN_RX0_IRQ); // enable only after usbd_dev is ready
 	nvic_enable_irq(NVIC_USB_WAKEUP_IRQ);
 }
-
+//__________________________________________________________________________________________________
+//
 void usb_poll() {
 	usbd_poll(g_usbd_dev);
 }
+//__________________________________________________________________________________________________
+//
 #define __NVIC_PRIO_BITS		4
 static inline void __set_BASEPRI(uint32_t value) {
 	__asm volatile ("MSR basepri, %0" : : "r" (value) : "memory");
 }
 
-bool usb_txd(uint8_t* data, uint32_t length) {
-	if (usb_connected)
-		if (usbd_ep_write_packet(g_usbd_dev, 0x82, data, length)) {
-			return true;
-		}
-	return false;
-}
 

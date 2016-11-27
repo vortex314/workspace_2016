@@ -22,6 +22,7 @@ public:
 	virtual ~UsbSerial();
 	void setup();
 	void loop();
+	void onEvent(Cbor& cbor);
 	Erc open();
 	Erc close();
 	void flush();

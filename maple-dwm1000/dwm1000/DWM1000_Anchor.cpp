@@ -237,7 +237,7 @@ void DWM1000_Anchor::onEvent(Cbor& msg) {
 		WAIT_POLL: {
 			dwt_setrxtimeout(0); /* Clear reception timeout to start next ranging process. */
 			dwt_rxenable(0); /* Activate reception immediately. */
-//			dwt_setinterrupt(DWT_INT_RFCG, 1);	// enable RXD interrupt
+			dwt_setinterrupt(DWT_INT_RFCG, 1);	// enable RXD interrupt
 
 			while (true) { /* Poll for reception of a frame or error/timeout. See NOTE 7 below. */
 				timeout(1000);/* This is the delay from the end of the frame transmission to the enable of the receiver, as programmed for the DW1000's wait for response feature. */

@@ -154,6 +154,11 @@ static void systick_setup(void) {
 	systick_counter_enable();
 }
 
+Bytes buf(300);
+SlipStream ss(512, usb);
+Led led;
+DWM1000_Anchor dwm1000;
+
 class Tracer: public Actor {
 public:
 	Tracer() :
@@ -187,6 +192,7 @@ public:
 		volatile int a = H("timeout");
 		volatile int b = H("link.pong");
 		volatile int c = H("mqtt.connack");
+		static uint16_t counter = 0;
 		Cbor cbor(100);
 		Str str(100);
 		uint16_t event;
@@ -194,6 +200,18 @@ public:
 		PT_BEGIN()
 		PT_YIELD_UNTIL(timeout());
 		while (true) {
+/*			TESTING: while (true) {
+				buf.clear();
+				buf.write(counter >> 8);
+				buf.write(counter & 0xFF);
+				for (int i = 0; i <= 255; i++) {
+					buf.write(i);
+				}
+				timeout(1000);
+				counter++;
+				ss.send(buf);
+				PT_YIELD_UNTIL((event == H("timeout")));
+			}*/
 			CONNECTING: while (true) {
 				timeout(2000);
 				eb.publish(H("link.ping"));
@@ -225,7 +243,8 @@ public:
 			}
 
 			MQTT_PUBLISH: while (true) {
-
+				if (event == H("link.pong"))
+					break;
 				cbor.clear();
 				cbor.addKeyValue(0, H("mqtt.publish"));
 				cbor.addKeyValue(H("topic"), "stm32/system/alive");
@@ -251,6 +270,8 @@ public:
 
 			}
 		}
+		if (event == H("link.pong"))
+			break;
 	PT_END()
 }
 };
@@ -333,7 +354,7 @@ class MqttProxy: public Actor {
 	SlipStream _ss;
 public:
 	MqttProxy(SlipStream& slipStream) :
-			Actor("mqttProxy"),_ss(slipStream) {
+			Actor("mqttProxy"), _ss(slipStream) {
 	}
 	void onEvent(Cbor& cbor) {
 		uint16_t cmd;
@@ -356,10 +377,7 @@ public:
 	}
 };
 
-SlipStream ss(512, usb);
 Tracer tracer;
-Led led;
-DWM1000_Anchor dwm1000;
 MqttProxy mqttProxy(ss);
 
 extern "C" int my_usb();
@@ -384,6 +402,7 @@ int main(void) {
 //	Log.setOutput(usartBufferedLog);
 //	Log.setOutput(bufferLog);
 	Log.setOutput(eventBusLog);
+//	Log.setOutput(bufferLog);
 	LOGF(" ready to log ?");
 
 	usb.setup();	// usb setup close to loop to get enumeration handling done

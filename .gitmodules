@@ -1,0 +1,6 @@
+[submodule "libopencm3"]
+	path = libopencm3
+	url = https://github.com/libopencm3/libopencm3.git
+[submodule "Common"]
+	path = Common
+	url = https://github.com/vortex314/Common.git

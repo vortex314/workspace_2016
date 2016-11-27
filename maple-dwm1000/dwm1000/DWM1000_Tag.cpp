@@ -10,7 +10,7 @@
 #include <Gpio.h>
 
 extern "C" {
-#include <spi.h>
+//#include <spi.h>
 #include "deca_device_api.h"
 #include "deca_regs.h"
 #include "deca_sleep.h"

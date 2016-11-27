@@ -18,7 +18,7 @@ __ALIGN_BEGIN uint8_t buffer[MAX_PACKET_SIZE] __ALIGN_END;
 
 void usbRxdCallback(uint8_t* data, uint32_t length) {
 	Bytes bytes(data, length);
-	Cbor cbor(200);
+	Cbor cbor(300);
 	cbor.addKeyValue(H("data"), bytes);
 	eb.publish(H("usb.rxd"), cbor);
 	return;
@@ -41,9 +41,8 @@ UsbSerial::~UsbSerial() {
 void UsbSerial::setup() {
 	usb_init();
 	open();
-	eb.subscribe(0, [](Cbor& cbor) { // all events
-				usb.loop();
-			});
+	timeout(100);	// wait 100 msec befor first event
+	eb.subscribe(this);
 }
 
 void UsbSerial::loop() {
@@ -74,7 +73,11 @@ void UsbSerial::usbTxd() {
 	}
 }
 
+void UsbSerial::onEvent(Cbor& cbor){
+//	usbTxd();
+}
+
 void UsbSerial::flush() {
 	// will be handled async by usbTxd
-//	usbTxd();
+	usbTxd();
 }
