@@ -11,7 +11,7 @@
 Usart usart1(1);
 
 Usart::Usart(int idx) :
-		Actor("Usart"), BufferedByteStream(UART_BUFFER_SIZE), _baudrate(115200), _usartBase(
+		Actor("Usart"), BufferedByteStream(UART_BUFFER_SIZE), _baudrate(9600), _usartBase(
 		USART1 + (idx - 1) * 0x400) {
 }
 
@@ -25,12 +25,20 @@ void Usart::init() {
 
 void Usart::loop() {
 	if (hasData()) {
+		Bytes bytes(100);
+		while ( hasData()){
+			bytes.write(read());
+		}
 
-		eb.publish(H("usart.xd"));
+		eb.event(H("usart"),H("rxd")).addKeyValue(H("data"),bytes);
+		eb.send();
 	}
 }
 
 void Usart::setup(){
+	eb.onAny().subscribe([](Cbor& msg){
+		usart1.loop();
+	});
 	open();
 }
 

@@ -21,8 +21,11 @@
 #include <Led.h>
 #include <EventBus.h>
 #include <Cbor.h>
+#include <libopencm3/cm3/scb.h>
+#include <libopencm3/cm3/vector.h>
+#include <usb_serial.h>
 
-EventBus eb(5120);
+EventBus eb(5120, 256);
 
 // void* __dso_handle;
 
@@ -96,9 +99,7 @@ static void clock_setup(void) {
 //	rcc_periph_clock_enable(RCC_USART1);
 //	rcc_periph_clock_enable(RCC_USART2);
 //	rcc_periph_clock_enable(RCC_USART3);
-
 //	rcc_clock_setup_in_hse_8mhz_out_48mhz();
-
 }
 
 static void gpio_setup(void) {
@@ -141,6 +142,119 @@ static void systick_setup(void) {
 	systick_interrupt_enable(); /* Start counting. */
 	systick_counter_enable();
 }
+//_______________________________________________________________________________________________________________________________________
+//
+void publishInt(const char* topic,uint32_t value) {
+        INFO("%s : %d ",topic,value);
+
+    char sValue[30];
+    sprintf(sValue,"%u",value);
+
+    eb.request(H("mqtt"),H("publish"),H("MqttCl")).addKeyValue(H("topic"),topic).addKeyValue(H("message"),sValue);
+    eb.send();
+
+}
+//_______________________________________________________________________________________________________________________________________
+//
+#define PREFIX "limero/"
+class Counter {
+    uint32_t _interval;
+    const char* _name;
+    uint64_t _start;
+    uint32_t _count;
+public:
+
+    Counter(const char* name,uint32_t interval) {
+        _interval=interval*1000;
+        _name=name;
+        _start=0;
+    }
+
+    void inc() {
+        _count++;
+        if ( Sys::_upTime- _start > _interval ) flush();
+    }
+
+    void flush() {
+         uint32_t v=(1000*_count)/(Sys::millis()-_start);
+       char field[30];
+        strcpy(field,PREFIX);
+
+        strcat(field,_name);
+        strcat(field,"/count");
+        publishInt(field,_count);
+
+        strcpy(field,PREFIX);
+        strcat(field,_name);
+        strcat(field,"/perSec");
+        publishInt(field,v);
+
+
+        _start=Sys::millis();
+        _count=0;
+    }
+
+
+};
+Counter requests("requests",10);
+Counter responses("responses",10);
+Counter mismatchs("mismatch",10);
+Counter correct("correct",10);
+Counter timeouts("timeout",10);
+//_______________________________________________________________________________________________________________________________________
+//
+class Tester: public Actor {
+    uint32_t _counter;
+    uint32_t _correct;
+    uint32_t _incorrect;
+    uint32_t _timeouts;
+public:
+    Tester() :
+        Actor("Tester") {
+        _counter=0;
+        _correct=0;
+        _incorrect=0;
+        _timeouts=0;
+    }
+    void setup() {
+        timeout(1000);
+        eb.onReply(0,H("ping")).subscribe(this);
+    }
+    void onEvent(Cbor& msg) {
+        PT_BEGIN()
+        ;
+
+        while (true) {
+//           timeout(5000);
+//           PT_YIELD_UNTIL(  timeout());
+
+            eb.request(H("Echo"),H("ping"),H("Tester")).addKeyValue(H("uint32_t"),_counter);
+            eb.send();
+            requests.inc();
+
+            timeout(5000);
+            PT_YIELD_UNTIL( eb.isReply(0,H("ping")) || eb.isEvent(H("sys"),H("timeout")));
+            uint32_t counter;
+            if ( msg.getKeyValue(H("uint32_t"),counter) ) {
+                if ( counter==_counter ) {
+                    correct.inc();
+                } else {
+                    mismatchs.inc();
+                }
+            } else {
+                timeouts.inc();
+            }
+
+        }
+        PT_END()
+    }
+};
+
+
+//_______________________________________________________________________________________________________________________________________
+//
+
+Tester tester;
 
 class Tracer: public Actor {
 public:
@@ -149,7 +263,7 @@ public:
 	}
 	void setup() {
 		timeout(1000);
-		eb.subscribe(this);	// trap all events
+		eb.onDst(H("Tracer")).subscribe(this);	// trap all events
 	}
 
 	void sendConnect() {
@@ -174,7 +288,7 @@ public:
 	void onEvent(Cbor& msg) {
 		volatile int a = H("timeout");
 		volatile int b = H("link.pong");
-		volatile int c=H("mqtt.connack");
+		volatile int c = H("mqtt.connack");
 		uint16_t event;
 		msg.getKeyValue(0, event);
 		Str str(100);
@@ -184,14 +298,14 @@ public:
 		while (true) {
 			CONNECTING: while (true) {
 				timeout(2000);
-				eb.publish(H("link.ping"));
+				eb.publish(H("link"), H("ping"));
 				PT_YIELD_UNTIL(
 						(event == H("timeout")) || (event == H("link.pong")));
 				if (event == H("link.pong"))
 					break;
 			}
 
-			MQTT_CONNECT: while (true){
+			MQTT_CONNECT: while (true) {
 				timeout(2000);
 				sendConnect();
 				PT_YIELD_UNTIL(
@@ -202,7 +316,7 @@ public:
 				goto CONNECTING;
 			}
 
-			MQTT_SUBSCRIBE: while (true){
+			MQTT_SUBSCRIBE: while (true) {
 				timeout(2000);
 				sendSubscribe();
 				PT_YIELD_UNTIL(
@@ -242,7 +356,7 @@ public:
 }
 };
 
-SlipStream ss(256, usb);
+SlipStream ss(256, usart1);
 Tracer tracer;
 Led led;
 
@@ -320,9 +434,7 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 	// Break into the debugger
 }
 
-#include <libopencm3/cm3/scb.h>
-#include <libopencm3/cm3/vector.h>
-#include <usb_serial.h>
+
 
 extern "C" int my_usb();
 int main(void) {
@@ -341,6 +453,7 @@ int main(void) {
 	tracer.setup();
 	usb.setup();
 	ss.setup();
+	tester.setup();
 
 //	SCB_SHCSR |= SCB_SHCSR_MEMFAULTENA;
 //	NVIC_SetPriority(MemoryM, 1);
@@ -352,17 +465,14 @@ int main(void) {
 	Log.setOutput(bufferLog);
 	LOGF(" ready to log ?");
 
-	eb.subscribe(0, [](Cbor& cbor) { // route events to gateway
-//				usart_send_string(" any event \n");
-				uint16_t cmd;
-				if ( cbor.getKeyValue(0,cmd) ) {
-					if ( cmd==H("mqtt.connect") || cmd==H("mqtt.subscribe")|| cmd==H("mqtt.publish") || cmd==H("link.ping")) {
-						ss.send(cbor);
-						LOGF("send");
-					}
-				}
-			});
-	eb.subscribe(H("usb.rxd"), [](Cbor& cbor) { // send usb data to slip processing
+	eb.onDst(H("mqtt")).subscribe([](Cbor& cbor) {
+		usart1.write(cbor);
+	});
+	eb.onDst(H("Echo")).subscribe([](Cbor& cbor) {
+		usart1.write(cbor);
+	});
+
+	eb.onEvent(H("usb"),H("rxd")).subscribe( [](Cbor& cbor) { // send usb data to slip processing
 //				LOGF(" usb.rxd execute ");
 				Bytes data(1000);
 				if (cbor.getKeyValue(H("data"),data)) {

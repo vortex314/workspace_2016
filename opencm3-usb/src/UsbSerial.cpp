@@ -33,7 +33,7 @@ UsbSerial::~UsbSerial() {
 void UsbSerial::setup() {
 	usb_init();
 	open();
-	eb.subscribe(0, [](Cbor& cbor) { // all events
+	eb.onAny().subscribe( [](Cbor& cbor) { // all events
 		usb.loop();
 	});
 }

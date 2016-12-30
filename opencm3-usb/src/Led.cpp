@@ -28,7 +28,6 @@ void Led::setup() {
 	GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
 	gpio_set(LED_PORT, LED_PIN);
 	timeout(100);
-	eb.subscribe(this);
 }
 
 void Led::onEvent(Cbor& cbor) {
