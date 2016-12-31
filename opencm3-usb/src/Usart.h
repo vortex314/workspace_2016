@@ -34,7 +34,7 @@ public:
 // Actor
 	static void usart1_isr(void);
 	void init();
-	void loop();
+	void onEvent(Cbor& cbor);
 	void setup();
 
 	Erc open();

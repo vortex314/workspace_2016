@@ -33,17 +33,14 @@ UsbSerial::~UsbSerial() {
 void UsbSerial::setup() {
 	usb_init();
 	open();
-	eb.onAny().subscribe( [](Cbor& cbor) { // all events
-		usb.loop();
-	});
 }
 
 __ALIGN_BEGIN uint8_t buffer2[64] __ALIGN_END ;
 
-void UsbSerial::loop() {
+void UsbSerial::onEvent(Cbor& cbor) { // called every 10 msec
 
 	usb_poll(); // not needed
-
+	timeout(10);
 	/*
 	if (hasData() && !_rxd_event_send) {
 		eb.publish(H("usb.rxd"));

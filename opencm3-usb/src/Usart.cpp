@@ -11,7 +11,7 @@
 Usart usart1(1);
 
 Usart::Usart(int idx) :
-		Actor("Usart"), BufferedByteStream(UART_BUFFER_SIZE), _baudrate(9600), _usartBase(
+		Actor("Usart"), BufferedByteStream(UART_BUFFER_SIZE), _baudrate(115200), _usartBase(
 		USART1 + (idx - 1) * 0x400) {
 }
 
@@ -23,22 +23,20 @@ void Usart::init() {
 	open();
 }
 
-void Usart::loop() {
-	if (hasData()) {
+void Usart::onEvent(Cbor& cbor) {
+/*	if (hasData()) {
 		Bytes bytes(100);
-		while ( hasData()){
+		while (hasData() && bytes.hasSpace(1)) {
 			bytes.write(read());
 		}
 
-		eb.event(H("usart"),H("rxd")).addKeyValue(H("data"),bytes);
+		eb.event(id(), H("rxd")).addKeyValue(H("data"), bytes);
 		eb.send();
-	}
+	} */
 }
 
-void Usart::setup(){
-	eb.onAny().subscribe([](Cbor& msg){
-		usart1.loop();
-	});
+void Usart::setup() {
+	eb.onAny().subscribe(this);
 	open();
 }
 
@@ -74,9 +72,13 @@ Erc Usart::close() {
 void Usart::flush() {
 	USART_CR1(USART1) |= USART_CR1_TXEIE;
 }
-
+volatile uint32_t reg = USART1;
+volatile uint32_t cr1;
+volatile uint32_t sr;
 void usart1_isr(void) {
 	/* Check if we were called because of RXNE. */
+	cr1 = USART_CR1(USART1);
+	sr = USART_CR1(USART1);
 	if (((USART_CR1(USART1) & USART_CR1_RXNEIE) != 0)
 			&& ((USART_SR(USART1) & USART_SR_RXNE) != 0)) {
 
@@ -103,6 +105,7 @@ void usart1_isr(void) {
 }
 
 int _write(int file, char *ptr, int len) {
+	return 0;
 //	int ret;
 
 	if (file == 1) {

@@ -44,7 +44,7 @@ void rcc_clock_setup_in_hse_8mhz_out_48mhz(void) {
 
 	/*
 	 * Set prescalers for AHB, ADC, ABP1, ABP2.
-	 * Do this before touching the PLL (TODO: why?).
+	 * Do this before touching the PLL (t o  d  o: why?).
 	 */
 	rcc_set_hpre(RCC_CFGR_HPRE_SYSCLK_NODIV); /* Set. 48MHz Max. 72MHz */
 	rcc_set_adcpre(RCC_CFGR_ADCPRE_PCLK2_DIV4); /* Set. 12MHz Max. 14MHz */
@@ -96,7 +96,7 @@ static void clock_setup(void) {
 	rcc_periph_clock_enable(RCC_GPIOC);
 
 	/* Enable clocks for GPIO port B (for GPIO_USART3_TX) and USART3. */
-//	rcc_periph_clock_enable(RCC_USART1);
+	rcc_periph_clock_enable(RCC_USART1);
 //	rcc_periph_clock_enable(RCC_USART2);
 //	rcc_periph_clock_enable(RCC_USART3);
 //	rcc_clock_setup_in_hse_8mhz_out_48mhz();
@@ -133,6 +133,14 @@ void bufferLog(char* data, uint32_t length) {
 	strncpy(logBuffer, data, length);
 }
 
+void ebLog(char* data, uint32_t length) {
+	data[length] = '\0';
+	eb.request(H("Logger"), H("log"), H("stm32")).addKeyValue(H("host"),
+			Sys::hostname()).addKeyValue(H("time"), Sys::millis()).addKeyValue(
+			H("line"), data);
+	eb.send();
+}
+
 static void systick_setup(void) {
 	/* 72MHz / 8 => 9000000 counts per second. */
 	systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8);
@@ -144,221 +152,290 @@ static void systick_setup(void) {
 }
 //_______________________________________________________________________________________________________________________________________
 //
-void publishInt(const char* topic,uint32_t value) {
-        INFO("%s : %d ",topic,value);
+void publishInt(const char* topic, uint32_t value) {
+	INFO("%s : %d ", topic, value);
 
-    char sValue[30];
-    sprintf(sValue,"%u",value);
+	char sValue[30];
+	sprintf(sValue, "%u", value);
 
-    eb.request(H("mqtt"),H("publish"),H("MqttCl")).addKeyValue(H("topic"),topic).addKeyValue(H("message"),sValue);
-    eb.send();
+	eb.request(H("mqtt"), H("publish"), H("MqttCl")).addKeyValue(H("topic"),
+			topic).addKeyValue(H("message"), sValue);
+	eb.send();
 
 }
 //_______________________________________________________________________________________________________________________________________
 //
 #define PREFIX "limero/"
 class Counter {
-    uint32_t _interval;
-    const char* _name;
-    uint64_t _start;
-    uint32_t _count;
+	uint32_t _interval;
+	const char* _name;
+	uint64_t _start;
+	uint32_t _count;
 public:
 
-    Counter(const char* name,uint32_t interval) {
-        _interval=interval*1000;
-        _name=name;
-        _start=0;
-    }
+	Counter(const char* name, uint32_t interval) {
+		_interval = interval * 1000;
+		_name = name;
+		_start = 0;
+		_count = 0;
+	}
 
-    void inc() {
-        _count++;
-        if ( Sys::_upTime- _start > _interval ) flush();
-    }
+	void inc() {
+		_count++;
+		if (Sys::_upTime - _start > _interval)
+			flush();
+	}
 
-    void flush() {
-         uint32_t v=(1000*_count)/(Sys::millis()-_start);
-       char field[30];
-        strcpy(field,PREFIX);
+	void flush() {
+		uint32_t v = (1000 * _count) / (Sys::millis() - _start);
+		char field[30];
+		strcpy(field, PREFIX);
 
-        strcat(field,_name);
-        strcat(field,"/count");
-        publishInt(field,_count);
+		strcat(field, _name);
+		strcat(field, "/count");
+		publishInt(field, _count);
 
-        strcpy(field,PREFIX);
-        strcat(field,_name);
-        strcat(field,"/perSec");
-        publishInt(field,v);
+		strcpy(field, PREFIX);
+		strcat(field, _name);
+		strcat(field, "/perSec");
+		publishInt(field, v);
 
-
-        _start=Sys::millis();
-        _count=0;
-    }
-
+		_start = Sys::millis();
+		_count = 0;
+	}
 
 };
-Counter requests("requests",10);
-Counter responses("responses",10);
-Counter mismatchs("mismatch",10);
-Counter correct("correct",10);
-Counter timeouts("timeout",10);
+Counter requests("requests", 10);
+Counter responses("responses", 10);
+Counter mismatchs("mismatch", 10);
+Counter correct("correct", 10);
+Counter timeouts("timeout", 10);
 //_______________________________________________________________________________________________________________________________________
 //
 class Tester: public Actor {
-    uint32_t _counter;
-    uint32_t _correct;
-    uint32_t _incorrect;
-    uint32_t _timeouts;
+	uint32_t _counter;
+	uint32_t _correct;
+	uint32_t _incorrect;
+	uint32_t _timeouts;
 public:
-    Tester() :
-        Actor("Tester") {
-        _counter=0;
-        _correct=0;
-        _incorrect=0;
-        _timeouts=0;
-    }
-    void setup() {
-        timeout(1000);
-        eb.onReply(0,H("ping")).subscribe(this);
-    }
-    void onEvent(Cbor& msg) {
-        PT_BEGIN()
-        ;
+	Tester() :
+			Actor("Tester") {
+		_counter = 0;
+		_correct = 0;
+		_incorrect = 0;
+		_timeouts = 0;
+	}
+	void setup() {
+		timeout(1000);
+		eb.onReply(0, H("ping")).subscribe(this);
+	}
+	void onEvent(Cbor& msg) {
+		PT_BEGIN()
+		;
 
-        while (true) {
+		while (true) {
 //           timeout(5000);
 //           PT_YIELD_UNTIL(  timeout());
 
-            eb.request(H("Echo"),H("ping"),H("Tester")).addKeyValue(H("uint32_t"),_counter);
-            eb.send();
-            requests.inc();
+			eb.request(H("Echo"), H("ping"), H("Tester")).addKeyValue(
+					H("uint32_t"), _counter);
+			eb.send();
+			requests.inc();
 
-            timeout(5000);
-            PT_YIELD_UNTIL( eb.isReply(0,H("ping")) || eb.isEvent(H("sys"),H("timeout")));
-            uint32_t counter;
-            if ( msg.getKeyValue(H("uint32_t"),counter) ) {
-                if ( counter==_counter ) {
-                    correct.inc();
-                } else {
-                    mismatchs.inc();
-                }
-            } else {
-                timeouts.inc();
-            }
+			timeout(5000);
+			PT_YIELD_UNTIL(
+					eb.isReply(0, H("ping"))
+							|| eb.isEvent(H("sys"), H("timeout")));
+			uint32_t counter;
+			if (msg.getKeyValue(H("uint32_t"), counter)) {
+				if (counter == _counter) {
+					correct.inc();
+				} else {
+					mismatchs.inc();
+				}
+			} else {
+				timeouts.inc();
+			}
 
-        }
-        PT_END()
-    }
+		}
+	PT_END()
+}
 };
-
 
 //_______________________________________________________________________________________________________________________________________
 //
 
 Tester tester;
 
-class Tracer: public Actor {
+class MqttCl: public Actor {
+	uint32_t _error;
+	Actor* _actor;
+	Str _topic;
+	bool _connected;
+
 public:
-	Tracer() :
-			Actor("Tracer") {
+	MqttCl() :
+			Actor("MqttCl"), _topic(30) {
+		_error = E_OK;
+		_actor = 0;
+		_connected = false;
 	}
 	void setup() {
 		timeout(1000);
-		eb.onDst(H("Tracer")).subscribe(this);	// trap all events
+		eb.onDst(H("MqttCl")).subscribe(this);
 	}
+	void onPublished(Cbor& cbor) {
 
-	void sendConnect() {
-		Str str(20);
-		Cbor cbor(50);
-		cbor.addKeyValue(0, H("mqtt.connect"));
-		str = "limero.ddns.net";
-		cbor.addKeyValue(H("host"), str);
-		cbor.addKeyValue(H("port"), 1883);
-		eb.publish(cbor);
 	}
-
-	void sendSubscribe() {
-		Str str(20);
-		Cbor cbor(50);
-		cbor.addKeyValue(0, H("mqtt.subscribe"));
-		str = "put/stm32/#";
-		cbor.addKeyValue(H("topic"), str);
-		eb.publish(cbor);
-	}
-
 	void onEvent(Cbor& msg) {
-		volatile int a = H("timeout");
-		volatile int b = H("link.pong");
-		volatile int c = H("mqtt.connack");
-		uint16_t event;
-		msg.getKeyValue(0, event);
-		Str str(100);
-		Cbor cbor(100);
+
 		PT_BEGIN()
-		PT_YIELD_UNTIL(timeout());
-		while (true) {
-			CONNECTING: while (true) {
-				timeout(2000);
-				eb.publish(H("link"), H("ping"));
-				PT_YIELD_UNTIL(
-						(event == H("timeout")) || (event == H("link.pong")));
-				if (event == H("link.pong"))
-					break;
-			}
+		;
 
-			MQTT_CONNECT: while (true) {
-				timeout(2000);
-				sendConnect();
-				PT_YIELD_UNTIL(
-						(event == H("timeout"))
-								|| (event == H("mqtt.connack")));
-				if (event == H("mqtt.connack") && !msg.gotoKey(H("error")))
-					break;
-				goto CONNECTING;
-			}
+		DISCONNECT: {
+			_connected = false;
+			eb.request(H("mqtt"), H("disconnect"), H("MqttCl"));
+			eb.send();
+			requests.inc();
+			timeout(2000);
 
-			MQTT_SUBSCRIBE: while (true) {
-				timeout(2000);
-				sendSubscribe();
-				PT_YIELD_UNTIL(
-						(event == H("timeout")) || (event == H("mqtt.suback")));
-				if (event == H("mqtt.suback") && !msg.gotoKey(H("error")))
-					break;
-				goto CONNECTING;
-			}
+			PT_YIELD_UNTIL(timeout());
+			goto CONNECTING;
 
-			MQTT_PUBLISH: while (true) {
-				cbor.clear();
-				cbor.addKeyValue(0, H("mqtt.publish"));
-				cbor.addKeyValue(H("topic"), "stm32/system/alive");
-				cbor.addKeyValue(H("message"), "true");
-				eb.publish(cbor);
-				timeout(100);
-				PT_YIELD_UNTIL(
-						event == H("timeout") || event == H("mqtt.puback"));
-				cbor.clear();
-				cbor.addKeyValue(0, H("mqtt.publish"));
-				cbor.addKeyValue(H("topic"), "stm32/system/uptime");
-				str.append(Sys::millis());
-				cbor.addKeyValue(H("message"), str);
-				eb.publish(cbor);
-				timeout(100);
-				PT_YIELD_UNTIL(
-						event == H("timeout") || event == H("mqtt.puback"));
-				if (event == H("mqtt.puback"))
-					if (msg.gotoKey(H("error")))
-						goto CONNECTING;
-//				timeout(100);
-//				PT_YIELD_UNTIL(event == H("timeout")); // sleep
+		}
+		CONNECTING: {
+			while (true) {
+				eb.request(H("mqtt"), H("connect"), H("MqttCl")).addKeyValue(
+						H("host"), "pi3.local").addKeyValue(H("port"), 1883);
+				eb.send();
+				requests.inc();
+				timeout(3000);
 
+				PT_YIELD_UNTIL(
+						eb.isReply(H("mqtt"), H("connect")) || timeout());
+
+				if (eb.isReply(H("mqtt"), H("connect"))
+						&& msg.getKeyValue(H("error"), _error) && _error == 0) {
+					_connected = true;
+					responses.inc();
+					goto CONNECTED_SUBSCRIBE_ACTORS;
+				}
 			}
 		}
+		CONNECTED_SUBSCRIBE_ACTORS: {
+			_actor = Actor::first();
+			while (true) {
+				_topic.clear();
+				_topic.append(_actor->name());
+				_topic.append("/request/#");
+				eb.request(H("mqtt"), H("subscribe"), H("MqttCl")).addKeyValue(
+						H("topic"), _topic);
+				eb.send();
+				timeout(2000);
+				PT_YIELD_UNTIL(
+						eb.isReply(H("mqtt"), H("subscribe")) || timeout());
+				if (timeout()) {
+
+				} else if (eb.isReply(H("mqtt"), H("subscribe")) && msg.getKeyValue(H("error"), _error)) {
+					if ( _error == 0) {
+						_actor = _actor->next();
+						if (_actor == 0)
+							goto CONNECTED;
+					} else {
+						goto DISCONNECT;
+					}
+				}
+			}
+		}
+		CONNECTED: {
+			while (true) {
+				char sTime[30];
+				sprintf(sTime, "%ld", Sys::millis());
+				eb.request(H("mqtt"), H("publish"), H("MqttCl")).addKeyValue(
+						H("topic"), "limero/topic").addKeyValue(H("message"),
+						sTime);
+				eb.send();
+				requests.inc();
+				timeout(3000);
+
+				PT_YIELD_UNTIL(
+						eb.isReply(H("mqtt"), H("publish")) || timeout());
+				if (timeout()) {
+					goto DISCONNECT;
+				}
+
+				if (eb.isReply(H("mqtt"), H("publish"))
+						&& msg.getKeyValue(H("error"), _error) && _error == 0) {
+					DEBUG(" publish succeeded ");
+					responses.inc();
+				} else {
+					goto DISCONNECT;
+				}
+			}
+		}
+
 	PT_END()
 }
 };
 
-SlipStream ss(256, usart1);
-Tracer tracer;
-Led led;
+MqttCl mqttCl;
+//_______________________________________________________________________________________________________________________________________
+//
+class System : public Actor {
+
+public:
+	System() :
+			Actor("sys") {
+
+	}
+	void setup() {
+
+	}
+	void onEvent(Cbor& msg) {
+
+	}
+};
+
+System sys;
+
+//_______________________________________________________________________________________________________________________________________
+//
+class Relay: public Actor {
+	const struct {
+		uint32_t pin;
+		uint32_t port;
+		uint32_t in;
+	} relays[4] = { { GPIO12, GPIOB, 4 }, { GPIO12, GPIOB, 3 }, { GPIO12, GPIOB,
+			2 }, { GPIO12, GPIOB, 1 } };
+public:
+	Relay() :
+			Actor("Relay") {
+
+	}
+	void setup() {
+		timeout(1000);
+		eb.onReply(0, H("ping")).subscribe(this);
+		gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_2_MHZ,
+		GPIO_CNF_OUTPUT_PUSHPULL, GPIO12 | GPIO13 | GPIO14 | GPIO15);
+		gpio_clear(GPIOB, GPIO12 | GPIO13 | GPIO14 | GPIO15);
+		gpio_set(GPIOB, GPIO12 | GPIO13 | GPIO14 | GPIO15);
+	}
+	void onEvent(Cbor& msg) {
+		uint32_t error = E_OK;
+		if (eb.isRequest(H("Relay"), H("relay"))) {
+			uint32_t nr;
+			if (msg.getKeyValue(H("on"), nr) && nr > 0 && nr < 5) {
+				gpio_clear(relays[nr].port, relays[nr].pin);
+			} else if (msg.getKeyValue(H("off"), nr) && nr > 0 && nr < 5) {
+				gpio_set(relays[nr].port, relays[nr].pin);
+			} else {
+				error = EINVAL;
+			}
+		}
+		eb.reply().addKeyValue(EB_ERROR, error);
+		eb.send();
+	}
+};
 
 #pragma weak hard_fault_handler = HardFault_Handler
 
@@ -384,6 +461,8 @@ void HardFault_Handler(void) {
 	);
 	// ".syntax divided\n"
 }
+
+Relay relay;
 
 extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 	volatile unsigned long stacked_r0;
@@ -434,57 +513,71 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 	// Break into the debugger
 }
 
+SlipStream slip(256, usart1);
 
+Led led;
+void slipSend(Cbor& cbor) {
+	slip.send(cbor);
+}
 
 extern "C" int my_usb();
 int main(void) {
 
 	volatile uint16_t hh = H("timeout");
 	static_assert(H("timeout")==45638," testing");
-//	static_assert(HASH("timeout")!=0," HASH ");
-//	static_assert(HH("timeout")!=0," HH ");
-//	my_usb();
+
+	Log.setOutput(ebLog);
 	clock_setup();
 	gpio_setup(); // not used
 	gpio_set(GPIOC, GPIO13); // not used
-	usart1.setup();
+	relay.setup();
+	eb.onDst(H("Relay")).subscribe(&relay);
+
+	Log.level(LogManager::LOG_INFO);
+
 	systick_setup();
 	led.setup();
-	tracer.setup();
+	mqttCl.setup();
 	usb.setup();
-	ss.setup();
-	tester.setup();
-
-//	SCB_SHCSR |= SCB_SHCSR_MEMFAULTENA;
-//	NVIC_SetPriority(MemoryM, 1);
-
 	Sys::hostname("STM32F103");
 
 	//	Log.setOutput(usartLog);
 //	Log.setOutput(usartBufferedLog);
-	Log.setOutput(bufferLog);
-	LOGF(" ready to log ?");
 
-	eb.onDst(H("mqtt")).subscribe([](Cbor& cbor) {
-		usart1.write(cbor);
-	});
-	eb.onDst(H("Echo")).subscribe([](Cbor& cbor) {
-		usart1.write(cbor);
-	});
+	usart1.setName("serial");
+	usart1.setup();
 
-	eb.onEvent(H("usb"),H("rxd")).subscribe( [](Cbor& cbor) { // send usb data to slip processing
-//				LOGF(" usb.rxd execute ");
-				Bytes data(1000);
-				if (cbor.getKeyValue(H("data"),data)) {
-					data.offset(0);
-					while (data.hasData()) {
-						ss.onRecv(data.read());
-					}
-				} else LOGF(" no usb data ");
+	slip.src(usart1.id());
+	slip.setName("slip");
+	slip.setup();
+
+	eb.onEvent(slip.id(), H("rxd")).subscribe([](Cbor& msg) // put SLIP messages on EB
+			{
+				Cbor data(0);
+				if ( msg.mapKeyValue(H("data"),data))
+				{
+					eb.publish(data);
+				}
+			});
+	eb.onAny().subscribe([](Cbor& cbor) { // if no local Actor send by SLIP REQUEST or REPLY
+				uint16_t dst,src;
+				if ( cbor.getKeyValue(EB_DST,dst) && Actor::findById(dst)==0) {
+					slipSend(cbor);
+				} else if ( cbor.getKeyValue(EB_SRC,src) && src== relay.id()) {
+					slipSend(cbor);
+				}
 			});
 
 	while (1) {
 		eb.eventLoop();
+		if (usart1.hasData()) {
+			Bytes data(100);
+			while (data.hasSpace(1) && usart1.hasData()) {
+				data.write(usart1.read());
+			}
+			eb.event(H("serial"), H("rxd")).addKeyValue(H("data"), data);
+			eb.send();
+		}
 	}
 
 	return 0;

@@ -31,18 +31,16 @@ void Led::setup() {
 }
 
 void Led::onEvent(Cbor& cbor) {
-	uint16_t event;
-	if (cbor.getKeyValue(0, event))
-		if (event == H("timeout")) {
-			if (_isOn) {
-				_isOn = false;
-				gpio_set(LED_PORT, LED_PIN);
-			} else {
-				_isOn = true;
-				gpio_clear(LED_PORT, LED_PIN);
-			}
-			timeout(_interval);
+	if (timeout()) {
+		if (_isOn) {
+			_isOn = false;
+			gpio_set(LED_PORT, LED_PIN);
+		} else {
+			_isOn = true;
+			gpio_clear(LED_PORT, LED_PIN);
 		}
+		timeout(_interval);
+	}
 }
 
 void Led::blinkFast() {
