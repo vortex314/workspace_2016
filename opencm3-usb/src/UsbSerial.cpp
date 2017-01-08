@@ -21,7 +21,7 @@ void usbCallback(uint8_t* data, uint32_t length) {
 }
 
 UsbSerial::UsbSerial() :
-		Actor("UsbSerial"), BufferedByteStream(256) {
+		Actor("usb"), BufferedByteStream(256) {
 	_rxd_overflow = 0;
 	_rxd_event_send = false;
 }
@@ -30,8 +30,12 @@ UsbSerial::~UsbSerial() {
 
 }
 
-void UsbSerial::setup() {
+void init(){
 	usb_init();
+}
+
+void UsbSerial::setup() {
+	init();
 	open();
 }
 

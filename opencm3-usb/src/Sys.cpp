@@ -17,6 +17,7 @@ char Sys::_hostname[30];
 
 
 uint64_t Sys::_upTime=0;
+uint64_t Sys::_boot_time=0;
 
 void Sys::tick(){
 	_upTime++;
@@ -39,4 +40,18 @@ void Sys::hostname(const char* hn){
 const char* Sys::hostname(){
 	return _hostname;
 }
+
+
+uint64_t Sys::now()
+{
+	return _boot_time+Sys::millis();
+}
+
+void Sys::setNow(uint64_t n)
+{
+	_boot_time = n-Sys::millis();
+}
+
+
+
 

@@ -11,16 +11,12 @@
 Usart usart1(1);
 
 Usart::Usart(int idx) :
-		Actor("Usart"), BufferedByteStream(UART_BUFFER_SIZE), _baudrate(115200), _usartBase(
+		Actor("serial"), BufferedByteStream(UART_BUFFER_SIZE), _baudrate(115200), _usartBase(
 		USART1 + (idx - 1) * 0x400) {
 }
 
 Usart::~Usart() {
 
-}
-
-void Usart::init() {
-	open();
 }
 
 void Usart::onEvent(Cbor& cbor) {
@@ -35,12 +31,18 @@ void Usart::onEvent(Cbor& cbor) {
 	} */
 }
 
-void Usart::setup() {
-	eb.onAny().subscribe(this);
-	open();
+Erc Usart::open(){
+	init();
 }
 
-Erc Usart::open() {
+void Usart::setup() {
+	eb.onAny().subscribe(this);
+	init();
+}
+
+void Usart::init() {
+	nvic_disable_irq(NVIC_USART1_IRQ);
+	usart_disable(USART1);
 	/* Setup GPIO pin GPIO_USART1_TX. */
 	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,
 	GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO_USART1_TX);
@@ -62,7 +64,6 @@ Erc Usart::open() {
 
 	/* Finally enable the USART. */
 	usart_enable(USART1);
-	return E_OK;
 }
 
 Erc Usart::close() {

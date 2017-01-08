@@ -28,9 +28,11 @@ void Led::setup() {
 	GPIO_CNF_OUTPUT_PUSHPULL, LED_PIN);
 	gpio_set(LED_PORT, LED_PIN);
 	timeout(100);
+	eb.onDst(H("Led")).subscribe(this);
 }
 
 void Led::onEvent(Cbor& cbor) {
+	uint16_t req;
 	if (timeout()) {
 		if (_isOn) {
 			_isOn = false;
@@ -40,6 +42,16 @@ void Led::onEvent(Cbor& cbor) {
 			gpio_clear(LED_PORT, LED_PIN);
 		}
 		timeout(_interval);
+	} else if( eb.isRequest(id(),H("blinkFast")) ) {
+		blinkFast();
+		eb.reply().addKeyValue(H("error"),0);
+		eb.send();
+	} else if( eb.isRequest(id(),H("blinkSlow")) ) {
+		blinkSlow();
+		eb.reply().addKeyValue(H("error"),0);
+		eb.send();
+	} else {
+		eb.defaultHandler(this,cbor);
 	}
 }
 

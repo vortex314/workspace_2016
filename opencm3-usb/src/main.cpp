@@ -21,11 +21,13 @@
 #include <Led.h>
 #include <EventBus.h>
 #include <Cbor.h>
+#include <Router.h>
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/cm3/vector.h>
 #include <usb_serial.h>
 
 EventBus eb(5120, 256);
+Uid uid(100);
 
 // void* __dso_handle;
 
@@ -134,6 +136,7 @@ void bufferLog(char* data, uint32_t length) {
 }
 
 void ebLog(char* data, uint32_t length) {
+	return;
 	data[length] = '\0';
 	eb.request(H("Logger"), H("log"), H("stm32")).addKeyValue(H("host"),
 			Sys::hostname()).addKeyValue(H("time"), Sys::millis()).addKeyValue(
@@ -212,6 +215,7 @@ Counter correct("correct", 10);
 Counter timeouts("timeout", 10);
 //_______________________________________________________________________________________________________________________________________
 //
+// H("Tester")
 class Tester: public Actor {
 	uint32_t _counter;
 	uint32_t _correct;
@@ -280,6 +284,9 @@ public:
 		_actor = 0;
 		_connected = false;
 	}
+	void init() {
+
+	}
 	void setup() {
 		timeout(1000);
 		eb.onDst(H("MqttCl")).subscribe(this);
@@ -336,8 +343,9 @@ public:
 						eb.isReply(H("mqtt"), H("subscribe")) || timeout());
 				if (timeout()) {
 
-				} else if (eb.isReply(H("mqtt"), H("subscribe")) && msg.getKeyValue(H("error"), _error)) {
-					if ( _error == 0) {
+				} else if (eb.isReply(H("mqtt"), H("subscribe"))
+						&& msg.getKeyValue(H("error"), _error)) {
+					if (_error == 0) {
 						_actor = _actor->next();
 						if (_actor == 0)
 							goto CONNECTED;
@@ -378,62 +386,84 @@ public:
 }
 };
 
-MqttCl mqttCl;
+// MqttCl mqttCl;
 //_______________________________________________________________________________________________________________________________________
 //
-class System : public Actor {
+#include <System.h>
 
-public:
-	System() :
-			Actor("sys") {
-
-	}
-	void setup() {
-
-	}
-	void onEvent(Cbor& msg) {
-
-	}
-};
-
-System sys;
+System systm;
 
 //_______________________________________________________________________________________________________________________________________
 //
 class Relay: public Actor {
 	const struct {
-		uint32_t pin;
+		uint16_t pin;
 		uint32_t port;
 		uint32_t in;
-	} relays[4] = { { GPIO12, GPIOB, 4 }, { GPIO12, GPIOB, 3 }, { GPIO12, GPIOB,
+	} relays[4] = { { GPIO15, GPIOB, 4 }, { GPIO14, GPIOB, 3 }, { GPIO13, GPIOB,
 			2 }, { GPIO12, GPIOB, 1 } };
 public:
 	Relay() :
 			Actor("Relay") {
 
 	}
-	void setup() {
-		timeout(1000);
-		eb.onReply(0, H("ping")).subscribe(this);
+	void init() {
 		gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_2_MHZ,
 		GPIO_CNF_OUTPUT_PUSHPULL, GPIO12 | GPIO13 | GPIO14 | GPIO15);
 		gpio_clear(GPIOB, GPIO12 | GPIO13 | GPIO14 | GPIO15);
 		gpio_set(GPIOB, GPIO12 | GPIO13 | GPIO14 | GPIO15);
 	}
+	void setup() {
+		init();
+		eb.onDst(H("Relay")).subscribe(this);
+	}
+
+	int setRelay(int idx, int on) {
+		if (on == 1) {
+			gpio_clear(relays[idx].port, relays[idx].pin);
+			return E_OK;
+		} else if (on == 0) {
+			gpio_set(relays[idx].port, relays[idx].pin);
+			return E_OK;
+		} else
+			return EINVAL;
+	}
 	void onEvent(Cbor& msg) {
 		uint32_t error = E_OK;
-		if (eb.isRequest(H("Relay"), H("relay"))) {
-			uint32_t nr;
-			if (msg.getKeyValue(H("on"), nr) && nr > 0 && nr < 5) {
-				gpio_clear(relays[nr].port, relays[nr].pin);
-			} else if (msg.getKeyValue(H("off"), nr) && nr > 0 && nr < 5) {
-				gpio_set(relays[nr].port, relays[nr].pin);
-			} else {
-				error = EINVAL;
-			}
+		if (eb.isRequest(H("Relay"), H("switch"))) {
+			uint32_t nr, idx;
+			error = EINVAL;
+			if (msg.getKeyValue(H("relay1"), nr)) {
+				error=setRelay(0, nr);
+			};
+			if (msg.getKeyValue(H("relay2"), nr)) {
+				error=setRelay(1, nr);
+			};
+			if (msg.getKeyValue(H("relay3"), nr)) {
+				error=setRelay(2, nr);
+			};
+			if (msg.getKeyValue(H("relay4"), nr)) {
+				error=setRelay(3, nr);
+			};
+
+			eb.reply().addKeyValue(EB_ERROR, error);
+			eb.send();
+
+			eb.event(id(), H("switch")) //
+			.addKeyValue(H("relay1"),
+					gpio_get(relays[0].port, relays[0].pin) ? 0 : 1) //
+			.addKeyValue(H("relay2"),
+					gpio_get(relays[1].port, relays[1].pin) ? 0 : 1) //
+			.addKeyValue(H("relay3"),
+					gpio_get(relays[2].port, relays[2].pin) ? 0 : 1) //
+			.addKeyValue(H("relay4"),
+					gpio_get(relays[3].port, relays[3].pin) ? 0 : 1);
+			eb.send();
+
+		} else {
+			eb.defaultHandler(this, msg);
 		}
-		eb.reply().addKeyValue(EB_ERROR, error);
-		eb.send();
+
 	}
 };
 
@@ -514,30 +544,49 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 }
 
 SlipStream slip(256, usart1);
+Router router;
 
 Led led;
 void slipSend(Cbor& cbor) {
 	slip.send(cbor);
 }
+/* to k-have the keywords
+ *         .addKeyValue(H("state"),actor->_state)
+ .addKeyValue(H("timeout"),actor->_timeout)
+ .addKeyValue(H("id"),actor->_id)
+ .addKeyValue(H("line"),actor->_ptLine);
+ H("system"));
+ timeoutEvent->addKeyValue(EB_EVENT, H("timeout"));
+ publish(H("system"),H("setup"));
+ H("Actor")
+ H("from");
+ H("to");
+ H("Led")
+ H("Usb")
+ H("serial")
+ H("slip")
+ */
 
 extern "C" int my_usb();
 int main(void) {
 
-	volatile uint16_t hh = H("timeout");
-	static_assert(H("timeout")==45638," testing");
+	LOGF(" H('sys') : %d   H('timeout')=%d", H("sys"), H("timeout"));
+	LOGF(" EB_REQUEST %d EB_DST %d EB_SRC %d ", EB_REQUEST, EB_DST, EB_SRC);
+	static_assert(H("timeout") == 16294, " timout hash incorrect");
+	Str tim("timeout");
 
 	Log.setOutput(ebLog);
 	clock_setup();
 	gpio_setup(); // not used
 	gpio_set(GPIOC, GPIO13); // not used
 	relay.setup();
-	eb.onDst(H("Relay")).subscribe(&relay);
+	systm.setup();
 
 	Log.level(LogManager::LOG_INFO);
 
 	systick_setup();
 	led.setup();
-	mqttCl.setup();
+//	mqttCl.setup();
 	usb.setup();
 	Sys::hostname("STM32F103");
 
@@ -559,14 +608,16 @@ int main(void) {
 					eb.publish(data);
 				}
 			});
-	eb.onAny().subscribe([](Cbor& cbor) { // if no local Actor send by SLIP REQUEST or REPLY
-				uint16_t dst,src;
-				if ( cbor.getKeyValue(EB_DST,dst) && Actor::findById(dst)==0) {
-					slipSend(cbor);
-				} else if ( cbor.getKeyValue(EB_SRC,src) && src== relay.id()) {
-					slipSend(cbor);
-				}
-			});
+	eb.onDst(H("mqtt")).subscribe(slipSend); // only EB dst: mqtt messages on SLIP
+
+	eb.onRemote().subscribe(&router, (MethodHandler) &Router::ebToMqtt);
+	eb.onEvent(H("Relay"), 0).subscribe(&router,
+			(MethodHandler) &Router::ebToMqtt);
+	eb.onEvent(H("mqtt"), H("published")).subscribe(&router,
+			(MethodHandler) &Router::mqttToEb);
+	eb.onEvent(H("mqtt"), H("disconnected")).subscribe(&router,
+			(MethodHandler) &Router::onEvent);
+	router.setup();
 
 	while (1) {
 		eb.eventLoop();
