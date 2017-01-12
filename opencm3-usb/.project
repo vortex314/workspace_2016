@@ -3,6 +3,8 @@
 	<name>opencm3-usb</name>
 	<comment></comment>
 	<projects>
+		<project>Common</project>
+		<project>Ebos</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>
@@ -24,4 +26,16 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
+	<linkedResources>
+		<link>
+			<name>Common</name>
+			<type>2</type>
+			<locationURI>$%7BPARENT-1-PROJECT_LOC%7D/Common</locationURI>
+		</link>
+		<link>
+			<name>Ebos</name>
+			<type>2</type>
+			<locationURI>$%7BPARENT-1-PROJECT_LOC%7D/Ebos</locationURI>
+		</link>
+	</linkedResources>
 </projectDescription>

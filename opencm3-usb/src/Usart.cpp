@@ -79,7 +79,7 @@ volatile uint32_t sr;
 void usart1_isr(void) {
 	/* Check if we were called because of RXNE. */
 	cr1 = USART_CR1(USART1);
-	sr = USART_CR1(USART1);
+	sr = USART_SR(USART1);
 	if (((USART_CR1(USART1) & USART_CR1_RXNEIE) != 0)
 			&& ((USART_SR(USART1) & USART_SR_RXNE) != 0)) {
 

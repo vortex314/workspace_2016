@@ -26,8 +26,9 @@
 #include <libopencm3/cm3/vector.h>
 #include <usb_serial.h>
 
-EventBus eb(5120, 256);
+EventBus eb(5120, 300);
 Uid uid(100);
+Log log(100);
 
 // void* __dso_handle;
 
@@ -391,25 +392,25 @@ public:
 //
 #include <System.h>
 
-System systm;
-
 //_______________________________________________________________________________________________________________________________________
 //
 class Relay: public Actor {
-	const struct {
+	 struct {
 		uint16_t pin;
 		uint32_t port;
 		uint32_t in;
-	} relays[4] = { { GPIO15, GPIOB, 4 }, { GPIO14, GPIOB, 3 }, { GPIO13, GPIOB,
-			2 }, { GPIO12, GPIOB, 1 } };
+	} relays[4];
 public:
 	Relay() :
 			Actor("Relay") {
-
+		relays[0]= {GPIO15, GPIOB, 4};
+		relays[1]= {GPIO14, GPIOB, 3};
+		relays[2]= {GPIO13, GPIOB, 2};
+		relays[3] = {GPIO12, GPIOB, 1};
 	}
 	void init() {
 		gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_2_MHZ,
-		GPIO_CNF_OUTPUT_PUSHPULL, GPIO12 | GPIO13 | GPIO14 | GPIO15);
+				GPIO_CNF_OUTPUT_PUSHPULL, GPIO12 | GPIO13 | GPIO14 | GPIO15);
 		gpio_clear(GPIOB, GPIO12 | GPIO13 | GPIO14 | GPIO15);
 		gpio_set(GPIOB, GPIO12 | GPIO13 | GPIO14 | GPIO15);
 	}
@@ -426,7 +427,7 @@ public:
 			gpio_set(relays[idx].port, relays[idx].pin);
 			return E_OK;
 		} else
-			return EINVAL;
+		return EINVAL;
 	}
 	void onEvent(Cbor& msg) {
 		uint32_t error = E_OK;
@@ -451,11 +452,11 @@ public:
 
 			eb.event(id(), H("switch")) //
 			.addKeyValue(H("relay1"),
-					gpio_get(relays[0].port, relays[0].pin) ? 0 : 1) //
+					gpio_get(relays[0].port, relays[0].pin) ? 0 : 1)//
 			.addKeyValue(H("relay2"),
-					gpio_get(relays[1].port, relays[1].pin) ? 0 : 1) //
+					gpio_get(relays[1].port, relays[1].pin) ? 0 : 1)//
 			.addKeyValue(H("relay3"),
-					gpio_get(relays[2].port, relays[2].pin) ? 0 : 1) //
+					gpio_get(relays[2].port, relays[2].pin) ? 0 : 1)//
 			.addKeyValue(H("relay4"),
 					gpio_get(relays[3].port, relays[3].pin) ? 0 : 1);
 			eb.send();
@@ -491,8 +492,6 @@ void HardFault_Handler(void) {
 	);
 	// ".syntax divided\n"
 }
-
-Relay relay;
 
 extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 	volatile unsigned long stacked_r0;
@@ -545,53 +544,41 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 
 SlipStream slip(256, usart1);
 Router router;
+System systm;
+Relay relay;
 
 Led led;
 void slipSend(Cbor& cbor) {
 	slip.send(cbor);
 }
-/* to k-have the keywords
- *         .addKeyValue(H("state"),actor->_state)
- .addKeyValue(H("timeout"),actor->_timeout)
- .addKeyValue(H("id"),actor->_id)
- .addKeyValue(H("line"),actor->_ptLine);
- H("system"));
- timeoutEvent->addKeyValue(EB_EVENT, H("timeout"));
- publish(H("system"),H("setup"));
- H("Actor")
- H("from");
- H("to");
- H("Led")
- H("Usb")
- H("serial")
- H("slip")
- */
+
+
+#include "main_labels.h"
+
 
 extern "C" int my_usb();
 int main(void) {
+
+	log.setOutput(bufferLog);	// NO LOG BEFORE USART enabled
 
 	LOGF(" H('sys') : %d   H('timeout')=%d", H("sys"), H("timeout"));
 	LOGF(" EB_REQUEST %d EB_DST %d EB_SRC %d ", EB_REQUEST, EB_DST, EB_SRC);
 	static_assert(H("timeout") == 16294, " timout hash incorrect");
 	Str tim("timeout");
 
-	Log.setOutput(ebLog);
+	uid.add(labels,LABEL_COUNT);
 	clock_setup();
 	gpio_setup(); // not used
 	gpio_set(GPIOC, GPIO13); // not used
-	relay.setup();
+//	relay.setup();
 	systm.setup();
 
-	Log.level(LogManager::LOG_INFO);
+	log.level(Log::LOG_INFO);
 
 	systick_setup();
 	led.setup();
-//	mqttCl.setup();
 	usb.setup();
 	Sys::hostname("STM32F103");
-
-	//	Log.setOutput(usartLog);
-//	Log.setOutput(usartBufferedLog);
 
 	usart1.setName("serial");
 	usart1.setup();
@@ -610,13 +597,6 @@ int main(void) {
 			});
 	eb.onDst(H("mqtt")).subscribe(slipSend); // only EB dst: mqtt messages on SLIP
 
-	eb.onRemote().subscribe(&router, (MethodHandler) &Router::ebToMqtt);
-	eb.onEvent(H("Relay"), 0).subscribe(&router,
-			(MethodHandler) &Router::ebToMqtt);
-	eb.onEvent(H("mqtt"), H("published")).subscribe(&router,
-			(MethodHandler) &Router::mqttToEb);
-	eb.onEvent(H("mqtt"), H("disconnected")).subscribe(&router,
-			(MethodHandler) &Router::onEvent);
 	router.setup();
 
 	while (1) {
