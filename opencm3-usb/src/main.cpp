@@ -21,14 +21,14 @@
 #include <Led.h>
 #include <EventBus.h>
 #include <Cbor.h>
-#include <Router.h>
+#include <MqttJson.h>
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/cm3/vector.h>
 #include <usb_serial.h>
 
 EventBus eb(5120, 300);
 Uid uid(100);
-Log log(100);
+Log logger(100);
 
 // void* __dso_handle;
 
@@ -270,7 +270,7 @@ public:
 //_______________________________________________________________________________________________________________________________________
 //
 
-Tester tester;
+//Tester tester;
 
 class MqttCl: public Actor {
 	uint32_t _error;
@@ -543,7 +543,7 @@ extern "C" void HardFault_HandlerC(unsigned long *hardfault_args) {
 }
 
 SlipStream slip(256, usart1);
-Router router;
+MqttJson router("Router");
 System systm;
 Relay relay;
 
@@ -559,7 +559,7 @@ void slipSend(Cbor& cbor) {
 extern "C" int my_usb();
 int main(void) {
 
-	log.setOutput(bufferLog);	// NO LOG BEFORE USART enabled
+	logger.setOutput(bufferLog);	// NO LOG BEFORE USART enabled
 
 	LOGF(" H('sys') : %d   H('timeout')=%d", H("sys"), H("timeout"));
 	LOGF(" EB_REQUEST %d EB_DST %d EB_SRC %d ", EB_REQUEST, EB_DST, EB_SRC);
@@ -573,7 +573,7 @@ int main(void) {
 //	relay.setup();
 	systm.setup();
 
-	log.level(Log::LOG_INFO);
+	logger.level(Log::LOG_INFO);
 
 	systick_setup();
 	led.setup();
@@ -586,6 +586,8 @@ int main(void) {
 	slip.src(usart1.id());
 	slip.setName("slip");
 	slip.setup();
+
+	router.setMqttId(H("mqtt"));
 
 	eb.onEvent(slip.id(), H("rxd")).subscribe([](Cbor& msg) // put SLIP messages on EB
 			{
